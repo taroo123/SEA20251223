@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>互動式人力趨勢模擬器 (2025-2034)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+        .tab-btn { padding: 0.5rem 1rem; font-weight: 500; color: #4B5563; border-top-left-radius: .5rem; border-top-right-radius: .5rem; transition: color .2s, background-color .2s; background: transparent; border: none; cursor: pointer; }
+        .tab-btn.active { background: #fff; color: #2563EB; border-bottom: 2px solid #2563EB; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .table-container { max-height: 500px; overflow-y: auto; }
+        thead th { position: sticky; top: 0; background-color: #F3F4F6; z-index: 10; }
+        thead th:first-child { position: sticky; left: 0; z-index: 20; background-color: #F3F4F6; }
+        tbody th { position: sticky; left: 0; background: #fff; z-index: 10; }
+        .controls-scroll { -webkit-overflow-scrolling: touch; }
+        .scenario-btn { display: block; width: 100%; text-align: center; padding: 0.6rem 0.75rem; border-radius: 0.65rem; border: 1px solid #d1d5db; background: #f9fafb; color: #374151; font-weight: 600; cursor: pointer; transition: all .12s ease; font-size: 0.9rem; }
+        .scenario-btn:hover { background: #f3f4f6; }
+        .scenario-btn.active.baseline { background: #2563eb; color: white; border-color: #2563eb; }
+        .scenario-btn.active.target { background: #7c3aed; color: white; border-color: #7c3aed; }
+        .rank-selector-btn { padding: 0.5rem 0.75rem; font-size: 0.875rem; font-weight: 500; border-radius: 0.5rem; border: 1px solid #d1d5db; background-color: #f3f4f6; color: #374151; cursor: pointer; transition: all 0.2s ease; }
+        .rank-selector-btn:hover { background-color: #e5e7eb; }
+        .rank-selector-btn.active { background-color: #2563eb; color: #ffffff; border-color: #2563eb; }
+        .cell-tooltip { position: fixed; pointer-events: none; z-index: 9999; background: rgba(20, 20, 20, 0.92); color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.3; box-shadow: 0 6px 18px rgba(0,0,0,0.25); max-width: 360px; }
+        .cell-tooltip .muted { color: rgba(255,255,255,0.8); font-size:12px; }
+        .gap-cell { cursor: default; display:inline-block; width:100%; height:100%; }
+        .legend-swatch { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:middle; border-radius:2px; }
+        .optimal-panel { background: #eff6ff; border: 1px solid #dbeafe; padding:18px; border-radius:12px; margin-bottom:16px; }
+        .btn-primary { background:#2563eb; color:white; padding:8px 14px; border-radius:8px; border:none; cursor:pointer; }
+        .btn-primary:disabled { opacity:0.6; cursor:not-allowed; }
+        .year-param-table { width: 100%; border-collapse: collapse; }
+        .year-param-table th, .year-param-table td { padding: 6px 4px; text-align: center; font-size: 0.875rem; border: 1px solid #e5e7eb; }
+        .year-param-table th { background-color: #f9fafb; }
+        .year-param-table input { width: 100%; padding: 4px; text-align: center; border: 1px solid #d1d5db; border-radius: 4px; }
+        .year-param-table input:disabled { background-color: #f3f4f6; color: #9ca3af; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="flex flex-row min-h-screen">
+        
+        <!-- SIDEBAR WRAPPER (Click to Expand, Mouseleave to Collapse) -->
+        <div id="sidebar-wrapper" class="relative z-30 flex-shrink-0 w-3 transition-all duration-300 ease-in-out bg-white border-r border-gray-200 shadow-2xl h-screen sticky top-0 overflow-hidden cursor-pointer">
+            
+            <!-- Collapsed State Indicator (Vertical Text) -->
+            <div id="sidebar-label" class="absolute left-0 top-0 w-3 h-full flex flex-col items-center pt-24 bg-blue-50 transition-opacity duration-300 pointer-events-none">
+                <div class="writing-vertical text-blue-700 font-bold text-sm tracking-widest opacity-80" style="writing-mode: vertical-rl; text-orientation: upright;">
+                    ➤
+                </div>
+            </div>
+
+            <!-- Expanded Content -->
+            <div class="w-[420px] h-full overflow-hidden">
+                <div id="controls-container" class="w-full h-full overflow-y-auto p-6 bg-white opacity-0 pointer-events-none transition-opacity duration-300 controls-scroll">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">參數控制面板</h2>
+
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <label class="block text-sm font-bold text-gray-700 mb-3">以每年1/1~12/31區間結算</label>
+                        <div class="flex flex-col gap-2">
+                            <button id="load-baseline" class="scenario-btn" data-scenario="baseline_one_year_attrition" type="button">近一年離職率/晉升率 (Baseline)</button>
+                            <button id="load-baseline-3y" class="scenario-btn" data-scenario="baseline_three_year_attrition" type="button">近三年離職率/晉升率</button>
+                            <button id="load-baseline-5y" class="scenario-btn" data-scenario="baseline_five_year_attrition" type="button">近五年離職率/晉升率</button>
+                            <button id="load-target-scenario" class="scenario-btn" data-scenario="target_scenario" type="button">目標情境 (自定義)</button>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">船隊預測 (自管船數)</h3>
+                        <div id="fleet-forecast-inputs" class="grid grid-cols-2 gap-x-4 gap-y-2"></div>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">年度招募設定</h3>
+                        <div id="recruitment-inputs" class="space-y-3">
+                            <div class="text-sm text-gray-600">請於下方年度表格設定每年招募人數。</div>
+                        </div>
+                        <div class="mt-3">
+                            <div style="max-height:220px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff;">
+                                <table class="year-param-table">
+                                    <thead><tr><th>年份</th><th>甲板實習生</th><th>機艙實習生</th></tr></thead>
+                                    <tbody id="recruitment-year-rows"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">現行人數 (20251130)</h3>
+                        <p class="text-sm text-gray-600 mb-3">可調整每個職級的總數。</p>
+                        <div id="initial-supply-inputs" class="space-y-3"></div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-3">職級詳細參數</h3>
+                        <div id="rank-params-selector" class="space-y-4">
+                            <div>
+                                <h4 class="text-md font-semibold text-gray-600 mb-2">甲板部</h4>
+                                <div id="deck-rank-buttons" class="grid grid-cols-3 gap-2"></div>
+                            </div>
+                            <div>
+                                <h4 class="text-md font-semibold text-gray-600 mb-2">機艙部</h4>
+                                <div id="engine-rank-buttons" class="grid grid-cols-3 gap-2"></div>
+                            </div>
+                        </div>
+                        <div id="rank-detail-panel" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN DASHBOARD CONTENT -->
+        <div class="flex-1 min-w-0 p-4 lg:p-8 transition-all duration-300">
+            <div class="max-w-full mx-auto">
+                <div class="flex items-start justify-between mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900">互動式人力趨勢模擬器 (2025-2034)</h1>
+                </div>
+
+                <div class="border-b border-gray-200 flex items-center justify-between">
+                    <nav class="-mb-px flex space-x-4" aria-label="Tabs" id="tab-nav">
+                        <button class="tab-btn active" data-tab="supply-total" type="button">總人力儀表板 (供給)</button>
+                        <button class="tab-btn" data-tab="total" type="button">總人力儀表板 (缺口)</button>
+                        <button class="tab-btn" data-tab="trends" type="button">參數整理</button>
+                    </nav>
+                </div>
+
+                <!-- TAB: Supply Dashboard (Default Active) -->
+                <div id="tab-supply-total" class="tab-content active bg-white p-6 rounded-b-2xl rounded-tr-2xl shadow-lg border border-gray-200 mt-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">預估未來10年總人力供給 (人)</h3>
+                    <p class="text-sm text-gray-600 mb-4 -mt-2"><span class="font-semibold">顏色定義:</span> 依據預估岸休月份進行二分法標示。</p>
+                    <div class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-700 space-y-2">
+                        <p class="font-bold">儀表板顏色定義 (二分法 - 連動左側目標設定)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
+                            <div class="flex items-center"><span class="legend-swatch bg-blue-200 border border-blue-300"></span><span class="font-medium">岸休 &ge; 目標值 (充裕)</span></div>
+                            <div class="flex items-center"><span class="legend-swatch bg-gray-100 border border-gray-300"></span><span class="font-medium">岸休 &lt; 目標值</span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Officers Supply Table -->
+                    <h4 class="text-md font-semibold text-gray-700 mb-2">船員幹部供給 (現況 - 無外招)</h4>
+                    <div class="table-container border border-gray-200 rounded-lg shadow-sm mb-6">
+                        <table class="min-w-full divide-y divide-gray-200"><thead id="table-head-supply-total" class="bg-gray-100"></thead><tbody id="table-body-supply-total" class="bg-white divide-y divide-gray-200"></tbody></table>
+                    </div>
+
+                    <!-- Recommended Recruitment Table -->
+                    <h4 class="text-md font-semibold text-gray-700 mb-2 mt-6">建議每年外招 (額外) - 當年需求目標補齊 (含參數連動)</h4>
+                    <div class="table-container border border-gray-200 rounded-lg shadow-sm mb-6">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead id="table-head-recommendation" class="bg-gray-100"></thead>
+                            <tbody id="table-body-recommendation" class="bg-white divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Cadet Tables -->
+                    <h4 class="text-md font-semibold text-gray-700 mb-2 mt-6">甲板實習生</h4>
+                    <div class="table-container border border-gray-200 rounded-lg shadow-sm mb-6">
+                        <table class="min-w-full divide-y divide-gray-200"><thead id="table-head-supply-deck-cadet" class="bg-gray-100"></thead><tbody id="table-body-supply-deck-cadet" class="bg-white divide-y divide-gray-200"></tbody></table>
+                    </div>
+                    <h4 class="text-md font-semibold text-gray-700 mb-2 mt-6">機艙實習生</h4>
+                    <div class="table-container border border-gray-200 rounded-lg shadow-sm mb-6">
+                        <table class="min-w-full divide-y divide-gray-200"><thead id="table-head-supply-engine-cadet" class="bg-gray-100"></thead><tbody id="table-body-supply-engine-cadet" class="bg-white divide-y divide-gray-200"></tbody></table>
+                    </div>
+
+                    <div id="charts-supply-total" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                        <div><h4 class="text-lg font-semibold text-center mb-2">甲板部 - 人力岸休月份</h4><div style="height:260px;"><canvas id="chart-supply-total-deck"></canvas></div></div>
+                        <div><h4 class="text-lg font-semibold text-center mb-2">機艙部 - 人力岸休月份</h4><div style="height:260px;"><canvas id="chart-supply-total-engine"></canvas></div></div>
+                    </div>
+                </div>
+
+                <!-- TAB: Gap Dashboard -->
+                <div id="tab-total" class="tab-content bg-white p-6 rounded-b-2xl rounded-tr-2xl shadow-lg border border-gray-200 mt-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">預估未來10年人力趨勢 (供給 - 需求 = 缺口)</h3>
+                    <p class="text-sm text-gray-600 mb-4 -mt-2"><span class="font-semibold">Tooltip 估算公式:</span> 估算月份(月) = (儲備率 − 1) × 6 × (總供給 ÷ 總需求)</p>
+                    <div class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-700 space-y-2">
+                        <p class="font-bold">儀表板顏色定義 (基於職級儲備率計算)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-2">
+                            <div class="flex items-center"><span class="legend-swatch bg-indigo-300 border border-indigo-400"></span><span class="font-medium">嚴重寬裕 (>6m)</span></div>
+                            <div class="flex items-center"><span class="legend-swatch bg-blue-200 border border-blue-300"></span><span class="font-medium">寬裕 (3.5-6m)</span></div>
+                            <div class="flex items-center"><span class="legend-swatch bg-green-200 border border-green-300"></span><span class="font-medium">均衡 (2.5-3.5m)</span></div>
+                            <div class="flex items-center"><span class="legend-swatch bg-yellow-200 border border-yellow-300"></span><span class="font-medium">輕微緊缺 (1.5-2.5m)</span></div>
+                            <div class="flex items-center"><span class="legend-swatch bg-red-200 border border-red-300"></span><span class="font-medium">嚴重緊缺 (<1.5m)</span></div>
+                        </div>
+                    </div>
+                    <div class="table-container border border-gray-200 rounded-lg shadow-sm mb-6">
+                        <table class="min-w-full divide-y divide-gray-200"><thead id="table-head-total" class="bg-gray-100"></thead><tbody id="table-body-total" class="bg-white divide-y divide-gray-200"></tbody></table>
+                    </div>
+                    <div id="charts-total" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div><h4 class="text-lg font-semibold text-center mb-2">甲板部 - 人力缺口趨勢</h4><div style="height:260px;"><canvas id="chart-total-deck"></canvas></div></div>
+                        <div><h4 class="text-lg font-semibold text-center mb-2">機艙部 - 人力缺口趨勢</h4><div style="height:260px;"><canvas id="chart-total-engine"></canvas></div></div>
+                    </div>
+                </div>
+
+                <!-- TAB: Trends Analysis -->
+                <div id="tab-trends" class="tab-content bg-white p-6 rounded-b-2xl rounded-tr-2xl shadow-lg border border-gray-200 mt-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">參數整理 (近五年 / 近三年 / 近一年)</h3>
+                    <div class="mb-4 text-sm text-gray-600">
+                        <span class="mr-4"><span class="inline-block w-3 h-3 bg-blue-500 rounded-full mr-1"></span>實際參數</span>
+                        <span class="mr-4"><span class="inline-block w-8 h-0.5 bg-gray-400 border-t-2 border-dotted mr-1 align-middle"></span>平均線</span>
+                        <span><span class="inline-block w-8 h-0.5 bg-red-500 border-t border-dashed mr-1 align-middle"></span>目標線</span>
+                    </div>
+                    
+                    <h4 class="text-lg font-bold text-gray-700 mb-3 border-l-4 border-blue-600 pl-2">甲板部 - 離職率趨勢</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8" id="trends-deck-attrition"></div>
+
+                    <h4 class="text-lg font-bold text-gray-700 mb-3 border-l-4 border-green-600 pl-2">甲板部 - 晉升率趨勢</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8" id="trends-deck-promotion"></div>
+
+                    <h4 class="text-lg font-bold text-gray-700 mb-3 border-l-4 border-blue-600 pl-2">機艙部 - 離職率趨勢</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8" id="trends-engine-attrition"></div>
+
+                    <h4 class="text-lg font-bold text-gray-700 mb-3 border-l-4 border-green-600 pl-2">機艙部 - 晉升率趨勢</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4" id="trends-engine-promotion"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cell-tooltip" class="cell-tooltip" style="display: none;"></div>
+
+    <script>
+        const YEARS = [2025,2026,2027,2028,2029,2030,2031,2032,2033,2034];
+        const BASE_SHIP_FORECAST_ONE_YEAR = [92,98,104,110,116,122,128,125,123,120];
+        const BASE_SHIP_FORECAST_THREE_YEAR = [92,98,104,110,116,122,128,125,123,120];
+        const RANK_IDS = { DECK: ["MASTER","C_O","_2_O","_3_O","D_CADET"], ENGINE: ["C_E","_2_E","_3_E","_4_E","E_CADET"] };
+        const ONBOARD_MONTHS = 6;
+
+        // --- 1. Define BASE_CONFIG_TEMPLATE First ---
+        const BASE_CONFIG_TEMPLATE = {
+            shipForecast: [...BASE_SHIP_FORECAST_ONE_YEAR],
+            recruitment: { deckHistory: [124, 90, 80, 70, 65, 60, 60, 60, 60, 60], engineHistory: [108, 90, 80, 70, 65, 60, 60, 60, 60, 60] },
+            initialSupply: { MASTER: 142, C_O: 138, _2_O: 218, _3_O: 251, D_CADET: 164, C_E: 146, _2_E: 138, _3_E: 179, _4_E: 233, E_CADET: 177 },
+            ranks: {
+                MASTER:{name:"船長",dept:"deck",needsPerShip:1,reserveRate:1.5,attritionRate:[0.03,0.03,0.03,0.03,0.03,0.04,0.04,0.04,0.04,0.04],promotionRate:Array(10).fill(0),promotionSource:"C_O"},
+                C_O:{name:"大副",dept:"deck",needsPerShip:1,reserveRate:1.5,attritionRate:[0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01],promotionRate:[0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08,0.08],promotionSource:"_2_O"},
+                _2_O:{name:"二副",dept:"deck",needsPerShip:1.5,reserveRate:1.5,attritionRate:[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02],promotionRate:[0.09,0.09,0.09,0.09,0.09,0.09,0.09,0.09,0.09,0.09],promotionSource:"_3_O"},
+                _3_O:{name:"三副",dept:"deck",needsPerShip:1.5,reserveRate:1.5,attritionRate:[0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05],promotionRate:[0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18],promotionSource:"D_CADET"},
+                D_CADET:{name:"甲板實習生",dept:"deck",needsPerShip:0,reserveRate:1.5,attritionRate:[0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05],promotionRate:[0.64,0.64,0.64,0.64,0.64,0.64,0.64,0.64,0.64,0.64],promotionSource:null}, 
+                C_E:{name:"輪機長",dept:"engine",needsPerShip:1,reserveRate:1.5,attritionRate:[0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06,0.06],promotionRate:Array(10).fill(0),promotionSource:"_2_E"},
+                _2_E:{name:"大管",dept:"engine",needsPerShip:1,reserveRate:1.5,attritionRate:[0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],promotionRate:[0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05],promotionSource:"_3_E"},
+                _3_E:{name:"二管",dept:"engine",needsPerShip:1 + (14/120), aSeriesCount: 14, reserveRate:1.5,attritionRate:[0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],promotionRate:[0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05],promotionSource:"_4_E"},
+                _4_E:{name:"三管",dept:"engine",needsPerShip:1 + ((9 + 24) / 120), scrubberCount: 9, oldShipCount: 24, reserveRate:1.5,attritionRate:[0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07,0.07],promotionRate:[0.17,0.17,0.17,0.17,0.17,0.17,0.17,0.17,0.17,0.17],promotionSource:"E_CADET"},
+                E_CADET:{name:"機艙實習生",dept:"engine",needsPerShip:0,reserveRate:1.5,attritionRate:[0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04],promotionRate:[0.57,0.57,0.57,0.57,0.57,0.57,0.57,0.57,0.57,0.57],promotionSource:null}
+            }
+        };
+
+        // --- 2. Define DEFAULT_PARAMS (Initialize with clones) ---
+        const DEFAULT_PARAMS = {
+            baseline_one_year_attrition: JSON.parse(JSON.stringify(BASE_CONFIG_TEMPLATE)), 
+            baseline_three_year_attrition: JSON.parse(JSON.stringify(BASE_CONFIG_TEMPLATE)), 
+            baseline_five_year_attrition: JSON.parse(JSON.stringify(BASE_CONFIG_TEMPLATE)), 
+            target_scenario: JSON.parse(JSON.stringify(BASE_CONFIG_TEMPLATE))
+        };
+        // Update Target Scenario Defaults (can customize if needed, currently same as baseline)
+        DEFAULT_PARAMS.target_scenario.id = 'target_scenario';
+        DEFAULT_PARAMS.target_scenario.shipForecast = [...BASE_SHIP_FORECAST_THREE_YEAR];
+
+        DEFAULT_PARAMS.baseline_one_year_attrition.id = 'baseline_one_year_attrition';
+        DEFAULT_PARAMS.baseline_three_year_attrition.id = 'baseline_three_year_attrition';
+        DEFAULT_PARAMS.baseline_five_year_attrition.id = 'baseline_five_year_attrition';
+
+        // --- 3. Apply Overrides to DEFAULT_PARAMS ---
+        // (Overrides same as previous logic, keeping values)
+        // UPDATED: Promotion rates for Baseline 1 Year (近一年)
+        // Changed as per request: C_O: 0.10, _2_O: 0.12, _3_O: 0.21, D_CADET: 0.77, _2_E: 0.08, _3_E: 0.07, _4_E: 0.21, E_CADET: 0.64
+        const baseline1yPromotions = { C_O: 0.10, _2_O: 0.12, _3_O: 0.21, D_CADET: 0.77, _2_E: 0.08, _3_E: 0.07, _4_E: 0.21, E_CADET: 0.64 };
+        for (const [rank, rate] of Object.entries(baseline1yPromotions)) { if (DEFAULT_PARAMS.baseline_one_year_attrition.ranks[rank]) { DEFAULT_PARAMS.baseline_one_year_attrition.ranks[rank].promotionRate = Array(10).fill(rate); } }
+        
+        // UPDATED: Promotion rates for Baseline 3 Year (近三年)
+        // Changed as per request: C_O: 0.13, _2_O: 0.09, _3_O: 0.24, D_CADET: 0.35, _2_E: 0.10, _3_E: 0.10, _4_E: 0.21, E_CADET: 0.31
+        const baseline3yPromotions = { C_O: 0.13, _2_O: 0.09, _3_O: 0.24, D_CADET: 0.35, _2_E: 0.10, _3_E: 0.10, _4_E: 0.21, E_CADET: 0.31 };
+        for (const [rank, rate] of Object.entries(baseline3yPromotions)) { if (DEFAULT_PARAMS.baseline_three_year_attrition.ranks[rank]) { DEFAULT_PARAMS.baseline_three_year_attrition.ranks[rank].promotionRate = Array(10).fill(rate); } }
+        
+        const baseline3yRates = { MASTER: 0.14, C_O: 0.08, _2_O: 0.05, _3_O: 0.15, D_CADET: 0.15, C_E: 0.12, _2_E: 0.09, _3_E: 0.10, _4_E: 0.18, E_CADET: 0.13 };
+        for (const [rank, rate] of Object.entries(baseline3yRates)) { if (DEFAULT_PARAMS.baseline_three_year_attrition.ranks[rank]) { DEFAULT_PARAMS.baseline_three_year_attrition.ranks[rank].attritionRate = Array(10).fill(rate); } }
+        const baseline5yRates = { MASTER: 0.07, C_O: 0.05, _2_O: 0.08, _3_O: 0.12, D_CADET: 0.10, C_E: 0.07, _2_E: 0.06, _3_E: 0.10, _4_E: 0.13, E_CADET: 0.11 };
+        for (const [rank, rate] of Object.entries(baseline5yRates)) { if (DEFAULT_PARAMS.baseline_five_year_attrition.ranks[rank]) { DEFAULT_PARAMS.baseline_five_year_attrition.ranks[rank].attritionRate = Array(10).fill(rate); } }
+        
+        // UPDATED: Promotion rates for Baseline 5 Year (近五年)
+        // Changed as per request: C_O: 0.12, _2_O: 0.11, _3_O: 0.29, D_CADET: 0.43, _2_E: 0.11, _3_E: 0.13, _4_E: 0.36, E_CADET: 0.25
+        const baseline5yPromotions = { C_O: 0.12, _2_O: 0.11, _3_O: 0.29, D_CADET: 0.43, _2_E: 0.11, _3_E: 0.13, _4_E: 0.36, E_CADET: 0.25 };
+        for (const [rank, rate] of Object.entries(baseline5yPromotions)) { if (DEFAULT_PARAMS.baseline_five_year_attrition.ranks[rank]) { DEFAULT_PARAMS.baseline_five_year_attrition.ranks[rank].promotionRate = Array(10).fill(rate); } }
+
+        // UPDATED: Promotion rates for Target Scenario (目標情境) - Base Rates
+        // Previous Base: C_O: 0.05, _2_O: 0.10, _3_O: 0.16, D_CADET: 0.50, _2_E: 0.09, _3_E: 0.12, _4_E: 0.20, E_CADET: 0.45
+        const targetPromotions = { C_O: 0.05, _2_O: 0.10, _3_O: 0.16, D_CADET: 0.50, _2_E: 0.09, _3_E: 0.12, _4_E: 0.20, E_CADET: 0.45 };
+        for (const [rank, rate] of Object.entries(targetPromotions)) {
+            if (DEFAULT_PARAMS.target_scenario.ranks[rank]) {
+                DEFAULT_PARAMS.target_scenario.ranks[rank].promotionRate = Array(10).fill(rate);
+            }
+        }
+
+        // NEW: Attrition rates for Target Scenario (目標情境) - Base Rates
+        // Request: Master 3%, C_O 3%, 2_O 1%, 3_O 6%, D_Cadet 6%, C_E 5%, 2_E 4%, 3_E 6%, 4_E 6%, E_Cadet 4%
+        const targetAttrition = { 
+            MASTER: 0.03, C_O: 0.03, _2_O: 0.01, _3_O: 0.06, D_CADET: 0.06,
+            C_E: 0.05, _2_E: 0.04, _3_E: 0.06, _4_E: 0.06, E_CADET: 0.04
+        };
+        for (const [rank, rate] of Object.entries(targetAttrition)) {
+            if (DEFAULT_PARAMS.target_scenario.ranks[rank]) {
+                DEFAULT_PARAMS.target_scenario.ranks[rank].attritionRate = Array(10).fill(rate);
+            }
+        }
+
+        // NEW: Specific Attrition Year Overrides for Target Scenario
+        // Request: MASTER 2030~2034 -> 4%, C_O 2029~2034 -> 5%, _2_O 2027~2034 -> 3%
+        if (DEFAULT_PARAMS.target_scenario.ranks.MASTER) {
+            [5, 6, 7, 8, 9].forEach(i => DEFAULT_PARAMS.target_scenario.ranks.MASTER.attritionRate[i] = 0.04);
+        }
+        if (DEFAULT_PARAMS.target_scenario.ranks.C_O) {
+            [4, 5, 6, 7, 8, 9].forEach(i => DEFAULT_PARAMS.target_scenario.ranks.C_O.attritionRate[i] = 0.05);
+        }
+        if (DEFAULT_PARAMS.target_scenario.ranks._2_O) {
+            [2, 3, 4, 5, 6, 7, 8, 9].forEach(i => DEFAULT_PARAMS.target_scenario.ranks._2_O.attritionRate[i] = 0.03);
+        }
+
+        // NEW: Specific Year Overrides for Target Scenario based on previous request (Promotions)
+        // C_O: 2028~2030 -> 8%, 2031~2034 -> 7%
+        // Indices: 2025=0, 2026=1, 2027=2, 2028=3, 2029=4, 2030=5, 2031=6, 2032=7, 2033=8, 2034=9
+        if (DEFAULT_PARAMS.target_scenario.ranks.C_O) {
+            [3, 4, 5].forEach(i => DEFAULT_PARAMS.target_scenario.ranks.C_O.promotionRate[i] = 0.08);
+            [6, 7, 8, 9].forEach(i => DEFAULT_PARAMS.target_scenario.ranks.C_O.promotionRate[i] = 0.07);
+        }
+
+        // _2_O: 2025 -> 5%
+        if (DEFAULT_PARAMS.target_scenario.ranks._2_O) {
+            DEFAULT_PARAMS.target_scenario.ranks._2_O.promotionRate[0] = 0.05;
+        }
+
+        // _3_O: 2030~2034 -> 15%
+        if (DEFAULT_PARAMS.target_scenario.ranks._3_O) {
+            [5, 6, 7, 8, 9].forEach(i => DEFAULT_PARAMS.target_scenario.ranks._3_O.promotionRate[i] = 0.15);
+        }
+
+        let currentConfig = JSON.parse(JSON.stringify(DEFAULT_PARAMS.baseline_one_year_attrition));
+        let lastResults = null;
+        let debounceTimer = null;
+        let currentSelectedRank = 'MASTER';
+        window.chartInstances = window.chartInstances || {};
+
+        // Register Plugin
+        if (typeof ChartDataLabels !== 'undefined') { Chart.register(ChartDataLabels); }
+
+        // Sidebar Interaction Logic
+        const sidebar = document.getElementById('sidebar-wrapper');
+        const sidebarLabel = document.getElementById('sidebar-label');
+        const sidebarContent = document.getElementById('controls-container');
+        sidebar.addEventListener('click', (e) => { if (sidebar.classList.contains('w-3')) { sidebar.classList.remove('w-3'); sidebar.classList.add('w-[420px]'); sidebar.classList.remove('cursor-pointer'); sidebarLabel.classList.add('opacity-0'); sidebarContent.classList.remove('opacity-0', 'pointer-events-none'); } });
+        sidebar.addEventListener('mouseleave', () => { if (sidebar.classList.contains('w-[420px]')) { sidebar.classList.add('w-3'); sidebar.classList.remove('w-[420px]'); sidebar.classList.add('cursor-pointer'); sidebarLabel.classList.remove('opacity-0'); sidebarContent.classList.add('opacity-0', 'pointer-events-none'); } });
+
+        function setDeepValue(obj, path, value) {
+            const keys = path.split('.');
+            let current = obj;
+            for (let i = 0; i < keys.length - 1; i++) {
+                const key = keys[i];
+                if (current[key] === undefined) current[key] = /^\d+$/.test(keys[i+1]) ? [] : {};
+                current = current[key];
+            }
+            current[keys[keys.length - 1]] = value;
+        }
+
+        function estimateShoreMonths(rankId, gap, demand) {
+            if (!isFinite(gap) || !isFinite(demand) || demand === 0) return null;
+            const rankConfig = currentConfig.ranks[rankId];
+            if (!rankConfig) return null;
+            const reserveRate = rankConfig.reserveRate || 1.5;
+            const supply = demand + gap;
+            const ratio = supply / demand;
+            let est = ONBOARD_MONTHS * (reserveRate - 1) * ratio;
+            est = Math.max(0.2, Math.min(24, est));
+            return Math.round(est * 10) / 10;
+        }
+
+        // --- NEW DYNAMIC RECRUITMENT CALCULATION ---
+        function calculateDynamicRecruitment(rankId, baseResults) {
+            const results = { recruitment: [], totalSupply: [] };
+            const rankConf = currentConfig.ranks[rankId];
+            let currentSupply = currentConfig.initialSupply[rankId]; // Start with initial
+            
+            // Loop from 2025 (index 0) to 2034 (index 9)
+            for (let i = 0; i < YEARS.length; i++) {
+                const year = YEARS[i];
+                
+                // 1. Calculate Natural Supply (Flow) from previous year state (including past recruits)
+                // For year 0 (2025), assuming status quo (no extra recruit needed immediately or already fixed)
+                if (i === 0) {
+                    results.recruitment.push(0);
+                    results.totalSupply.push(currentSupply);
+                    continue; 
+                }
+
+                const lastSupply = results.totalSupply[i-1];
+                
+                // Use rates from CURRENT CONFIG (to ensure linkage with sidebar)
+                const attRate = (rankConf.attritionRate && rankConf.attritionRate[i] !== undefined) ? rankConf.attritionRate[i] : 0;
+                const promRate = (rankConf.promotionRate && rankConf.promotionRate[i] !== undefined) ? rankConf.promotionRate[i] : 0;
+                
+                const attrition = lastSupply * attRate;
+                const promotionOut = lastSupply * promRate;
+                
+                let promotionIn = 0;
+                if (rankConf.promotionSource) {
+                    const srcRank = rankConf.promotionSource;
+                    // Get Source Supply from BASE simulation (Natural flow of source rank)
+                    // NOTE: This assumes natural flow of source rank is not affected by recruitment.
+                    // Correct for C_O (source 2_O) and 2_E (source 3_E) as we are only recruiting C_O/2_E here.
+                    const srcSupplyLast = baseResults.total[srcRank].supply[i-1] || 0;
+                    const srcConf = currentConfig.ranks[srcRank]; // Use Current Config for Source Rates
+                    const srcPromRate = (srcConf.promotionRate && srcConf.promotionRate[i] !== undefined) ? srcConf.promotionRate[i] : 0;
+                    promotionIn = srcSupplyLast * srcPromRate;
+                }
+
+                const naturalSupply = lastSupply - attrition - promotionOut + promotionIn;
+
+                // 2. Calculate Demand for THIS Year
+                const ships = currentConfig.shipForecast[i];
+                const needs = rankConf.needsPerShip;
+                const reserve = rankConf.reserveRate || 1.5;
+                const demand = ships * needs * reserve;
+
+                // 3. Calculate Gap & Recruit to fill THIS YEAR's demand
+                let recruit = 0;
+                // Only recruit from 2026 onwards
+                if (year >= 2026) {
+                    const gap = demand - naturalSupply;
+                    if (gap > 0) {
+                        recruit = Math.ceil(gap);
+                    }
+                }
+
+                const finalSupply = naturalSupply + recruit;
+                
+                results.recruitment.push(recruit);
+                results.totalSupply.push(finalSupply);
+            }
+            return results;
+        }
+
+        function simulateOneYear(config, prevSupply, shipCount, yearIndex) {
+            const rankIds = Object.keys(config.ranks);
+            let nextSupply = {};
+            let gaps = { total: {} };
+            rankIds.forEach(rankId => {
+                const r = config.ranks[rankId];
+                const lastSupply = prevSupply[rankId] || 0;
+                const totalDemand = (r.needsPerShip * shipCount) * (r.reserveRate || 1);
+                if (yearIndex === 0) {
+                    nextSupply[rankId] = lastSupply;
+                } else {
+                    const attritionRate = (r.attritionRate && r.attritionRate[yearIndex] !== undefined) ? r.attritionRate[yearIndex] : 0;
+                    const promotionRate = (r.promotionRate && r.promotionRate[yearIndex] !== undefined) ? r.promotionRate[yearIndex] : 0;
+                    const attrition = lastSupply * attritionRate;
+                    const promotionOut = lastSupply * promotionRate;
+                    let promotionIn = 0;
+                    if (r.promotionSource) {
+                        const src = r.promotionSource;
+                        const srcLast = prevSupply[src] || 0;
+                        const srcRate = (config.ranks[src] && config.ranks[src].promotionRate && config.ranks[src].promotionRate[yearIndex] !== undefined) ? config.ranks[src].promotionRate[yearIndex] : 0;
+                        promotionIn = srcLast * srcRate;
+                    }
+                    let recruitment = 0;
+                    if (rankId === 'D_CADET') recruitment = (config.recruitment && Array.isArray(config.recruitment.deckHistory)) ? (config.recruitment.deckHistory[yearIndex] || 0) : 0;
+                    if (rankId === 'E_CADET') recruitment = (config.recruitment && Array.isArray(config.recruitment.engineHistory)) ? (config.recruitment.engineHistory[yearIndex] || 0) : 0;
+                    
+                    const currentSupply = lastSupply - attrition - promotionOut + promotionIn + recruitment;
+                    nextSupply[rankId] = currentSupply;
+                }
+                gaps.total[rankId] = nextSupply[rankId] - totalDemand;
+            });
+            return { gaps, nextSupply };
+        }
+
+        function runSimulation(config) {
+            const rankIds = Object.keys(config.ranks);
+            let results = { total: {} };
+            rankIds.forEach(id => results.total[id] = { supply: [], demand: [], gap: [] });
+            let currentSupply = Object.assign({}, config.initialSupply);
+            for (let i=0;i<YEARS.length;i++) {
+                const ships = config.shipForecast[i];
+                const yearResult = simulateOneYear(config, currentSupply, ships, i);
+                rankIds.forEach(id => {
+                    results.total[id].supply[i] = yearResult.nextSupply[id];
+                    const demand = (config.ranks[id].needsPerShip * ships) * (config.ranks[id].reserveRate || 1);
+                    results.total[id].demand[i] = demand;
+                    results.total[id].gap[i] = yearResult.gaps.total[id];
+                });
+                currentSupply = yearResult.nextSupply;
+            }
+            results.config = config;
+            results.config.initialSupply = config.initialSupply;
+            return results;
+        }
+
+        function renderCharts(results, chartIds, displayMode = 'gap') {
+            if (typeof Chart === 'undefined') return;
+            const data = results && results.total ? results.total : {};
+            const rankGroups = { deck: ["MASTER", "C_O", "_2_O", "_3_O"], engine: ["C_E", "_2_E", "_3_E", "_4_E"] };
+            const colors = {
+                MASTER: 'rgba(239, 68, 68, 1)', C_O: 'rgba(249, 115, 22, 1)', _2_O: 'rgba(234, 179, 8, 1)', _3_O: 'rgba(139, 92, 246, 1)',
+                C_E: 'rgba(37, 99, 235, 1)', _2_E: 'rgba(5, 150, 105, 1)', _3_E: 'rgba(20, 184, 166, 1)', _4_E: 'rgba(107, 114, 128, 1)'
+            };
+            const createChart = (canvasId, dept) => {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (window.chartInstances[canvasId]) { try { window.chartInstances[canvasId].destroy(); } catch(e){} window.chartInstances[canvasId]=null; }
+                const datasets = rankGroups[dept].map(rankId => {
+                    if (!data[rankId]) return null;
+                    let seriesData;
+                    if (displayMode === 'supply_total') {
+                        seriesData = data[rankId].gap.map((g, i) => {
+                            const d = data[rankId].demand[i];
+                            const est = estimateShoreMonths(rankId, g, d);
+                            return (est !== null) ? est : null;
+                        });
+                    } else {
+                        const series = (displayMode === 'supply') ? data[rankId].supply : data[rankId].gap;
+                        seriesData = series.map(v => (v === undefined || v === null) ? null : Number(Math.round(v*10)/10));
+                    }
+                    return {
+                        label: (results.config && results.config.ranks && results.config.ranks[rankId]) ? results.config.ranks[rankId].name : rankId,
+                        data: seriesData,
+                        borderColor: colors[rankId] || 'rgba(0,0,0,0.7)',
+                        backgroundColor: (colors[rankId] || 'rgba(0,0,0,0.1)').replace('1)','0.08)'),
+                        borderWidth: 2, fill: false, tension: 0.15, spanGaps: true,
+                        datalabels: { display: false }
+                    };
+                }).filter(Boolean);
+                let yAxisTitle = (displayMode === 'supply_total') ? '岸休月份 (月)' : (displayMode === 'supply' ? '人力供給 (人)' : '人力缺口 (人)');
+                window.chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line', data: { labels: YEARS, datasets: datasets },
+                    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } }, tooltip: { mode: 'index', intersect: false } }, scales: { y: { beginAtZero: (displayMode === 'supply' || displayMode === 'supply_total'), max: (displayMode === 'supply_total') ? 6 : undefined, title: { display: true, text: yAxisTitle } }, x: { title: { display: true, text: '年份' } } } }
+                });
+            };
+            if (Array.isArray(chartIds) && chartIds.length >= 2) { createChart(chartIds[0], 'deck'); createChart(chartIds[1], 'engine'); }
+            else { createChart('chart-total-deck','deck'); createChart('chart-total-engine','engine'); }
+        }
+
+        function renderDashboardTable(results, headElId, bodyElId, displayMode='gap', customGroups = null) {
+            const headEl = document.getElementById(headElId);
+            const bodyEl = document.getElementById(bodyElId);
+            if (!headEl || !bodyEl) return;
+            const data = (results && results.total) ? results.total : {};
+            const initialSupply = (results && results.config && results.config.initialSupply) ? results.config.initialSupply : DEFAULT_PARAMS.baseline_one_year_attrition.initialSupply;
+            const shipForecast = (currentConfig && Array.isArray(currentConfig.shipForecast) && currentConfig.shipForecast.length === YEARS.length) ? currentConfig.shipForecast : DEFAULT_PARAMS.baseline_one_year_attrition.shipForecast;
+            let headHTML = `<tr><th class="py-3 px-4 text-left text-xs font-semibold sticky left-0 z-20 bg-gray-100">職級<br>自管船數</th><th class="py-3 px-4 text-left text-xs font-semibold">現行人數<br>(20251130)</th>`;
+            YEARS.forEach((y,i)=> headHTML += `<th class="py-3 px-4 text-center text-xs font-semibold">${y}<br><span class="font-normal text-blue-600">(${shipForecast[i]} 艘)</span></th>`);
+            headHTML += '</tr>';
+            headEl.innerHTML = headHTML;
+            const getGapColor = (rankId, gap, demand) => { if (gap === null || gap === undefined || isNaN(gap) || isNaN(demand) || demand === 0) return 'bg-gray-100'; const est = estimateShoreMonths(rankId, gap, demand); if (est === null) return 'bg-gray-100'; if (est > 6) return 'bg-indigo-300 text-indigo-900'; if (est > 3.5) return 'bg-blue-200 text-blue-900'; if (est > 2.5) return 'bg-green-200 text-green-900'; if (est > 1.5) return 'bg-yellow-200 text-yellow-900'; return 'bg-red-200 text-red-900'; };
+            // UPDATED: Dynamic color logic based on config target
+            const getSupplyTotalColor = (rankId, gap, demand) => { 
+                if (gap === null || gap === undefined || isNaN(gap) || isNaN(demand) || demand === 0) return 'bg-gray-50'; 
+                const est = estimateShoreMonths(rankId, gap, demand); 
+                if (est === null) return 'bg-gray-50'; 
+                
+                // Get target shore leave months from current config
+                const rankConfig = currentConfig.ranks[rankId];
+                const targetReserve = rankConfig ? (rankConfig.reserveRate || 1.5) : 1.5;
+                const targetShore = ONBOARD_MONTHS * (targetReserve - 1);
+                
+                // Use tolerance for float comparison or just direct comparison
+                if (est >= targetShore - 0.05) return 'bg-blue-200 text-blue-900'; 
+                return 'bg-gray-100 text-gray-700'; 
+            };
+            let bodyHTML = '';
+            const groups = customGroups || [{ title: '甲板部', ids: RANK_IDS.DECK }, { title: '機艙部', ids: RANK_IDS.ENGINE }];
+            groups.forEach(group => {
+                if (group.title) bodyHTML += `<tr><td colspan="${YEARS.length + 2}" class="px-4 py-2 bg-gray-50 font-bold text-gray-700">${group.title}</td></tr>`;
+                group.ids.forEach(rankId => {
+                    let rankName = (results && results.config && results.config.ranks && results.config.ranks[rankId]) ? results.config.ranks[rankId].name : rankId;
+                    const rankData = data[rankId] || { supply: [], gap: [], demand: [] };
+                    if (displayMode === 'supply_total' && (rankId === 'D_CADET' || rankId === 'E_CADET')) {
+                        let recruitmentData = (rankId === 'D_CADET') ? currentConfig.recruitment.deckHistory : currentConfig.recruitment.engineHistory;
+                        let rowLabel = (rankId === 'D_CADET') ? "甲板實習生" : "機艙實習生";
+                        bodyHTML += `<tr><th class="py-3 px-4 text-left text-sm font-medium sticky left-0 z-10 bg-white">${rowLabel}</th><td class="py-3 px-4 text-center text-sm font-medium text-gray-400">-</td>`;
+                        YEARS.forEach((y, i) => { bodyHTML += `<td class="px-4 py-2 text-center text-sm font-bold bg-white text-gray-900">${recruitmentData[i] || 0}</td>`; });
+                        bodyHTML += `</tr>`;
+                        return;
+                    }
+                    bodyHTML += `<tr><th class="py-3 px-4 text-left text-sm font-medium sticky left-0 z-10 bg-white">${rankName}</th><td class="py-3 px-4 text-center text-sm font-medium">${Math.round(initialSupply[rankId]||0)}</td>`;
+                    YEARS.forEach((y,i) => {
+                        let value, colorClass;
+                        const gapValue = rankData.gap[i] || 0; 
+                        const demand = rankData.demand ? (rankData.demand[i] || 0) : 0;
+                        const supplyValue = rankData.supply[i] || 0;
+                        if (displayMode === 'supply') { value = supplyValue; colorClass = 'bg-gray-50 text-gray-900'; }
+                        else if (displayMode === 'supply_total') { value = supplyValue; colorClass = getSupplyTotalColor(rankId, gapValue, demand); }
+                        else { value = gapValue; colorClass = getGapColor(rankId, value, demand); }
+                        bodyHTML += `<td class="px-4 py-2 text-center text-sm font-bold ${colorClass}"><span class="gap-cell" data-gap="${Math.round(gapValue)}" data-demand="${Math.round(demand)}" data-rank="${rankId}" data-year="${y}">${Math.round(value)}</span></td>`;
+                    });
+                    bodyHTML += `</tr>`;
+                });
+            });
+            bodyEl.innerHTML = bodyHTML;
+            attachGapTooltips();
+        }
+        
+        function renderRecommendationTable(results, headElId, bodyElId) {
+            const headEl = document.getElementById(headElId);
+            const bodyEl = document.getElementById(bodyElId);
+            if (!headEl || !bodyEl) return;
+            const shipForecast = (currentConfig && Array.isArray(currentConfig.shipForecast) && currentConfig.shipForecast.length === YEARS.length) ? currentConfig.shipForecast : DEFAULT_PARAMS.baseline_one_year_attrition.shipForecast;
+            let headHTML = `<tr><th class="py-3 px-4 text-left text-xs font-semibold sticky left-0 z-20 bg-gray-100">項目</th><th class="py-3 px-4 text-left text-xs font-semibold">現行</th>`;
+            YEARS.forEach((y,i)=> headHTML += `<th class="py-3 px-4 text-center text-xs font-semibold">${y}<br><span class="font-normal text-blue-600">(${shipForecast[i]} 艘)</span></th>`);
+            headHTML += '</tr>';
+            headEl.innerHTML = headHTML;
+            let bodyHTML = '';
+            
+            // USE CALCULATED BASE RESULTS to allow promotion source linking
+            const recCO = calculateDynamicRecruitment('C_O', results); 
+            const rec2E = calculateDynamicRecruitment('_2_E', results);
+                
+            bodyHTML += `<tr><th class="py-3 px-4 text-left text-sm font-medium sticky left-0 z-10 bg-white">建議外招 (大副)</th><td class="py-3 px-4 text-center text-sm font-medium text-gray-400">-</td>`;
+            YEARS.forEach((y, i) => {
+                if (i === 0) { bodyHTML += `<td class="px-4 py-2 text-center text-sm bg-white text-gray-400">-</td>`; } 
+                else { const recruit = recCO.recruitment[i]; const total = Math.round(recCO.totalSupply[i]); bodyHTML += `<td class="px-4 py-2 text-center bg-white"><div class="text-sm font-bold text-red-600">${recruit}</div><div class="text-xs text-gray-500 mt-1">(總: ${total})</div></td>`; }
+            });
+            bodyHTML += `</tr>`;
+
+            bodyHTML += `<tr><th class="py-3 px-4 text-left text-sm font-medium sticky left-0 z-10 bg-white">建議外招 (大管)</th><td class="py-3 px-4 text-center text-sm font-medium text-gray-400">-</td>`;
+            YEARS.forEach((y, i) => {
+                if (i === 0) { bodyHTML += `<td class="px-4 py-2 text-center text-sm bg-white text-gray-400">-</td>`; } 
+                else { const recruit = rec2E.recruitment[i]; const total = Math.round(rec2E.totalSupply[i]); bodyHTML += `<td class="px-4 py-2 text-center bg-white"><div class="text-sm font-bold text-red-600">${recruit}</div><div class="text-xs text-gray-500 mt-1">(總: ${total})</div></td>`; }
+            });
+            bodyHTML += `</tr>`;
+            bodyEl.innerHTML = bodyHTML;
+        }
+
+        function renderTrendTab() {
+            const containers = { deckAttr: document.getElementById('trends-deck-attrition'), deckProm: document.getElementById('trends-deck-promotion'), engAttr: document.getElementById('trends-engine-attrition'), engProm: document.getElementById('trends-engine-promotion') };
+            if(!containers.deckAttr) return;
+            Object.values(containers).forEach(el => el.innerHTML = '');
+            const scenarios = [ { label: '近五年', key: 'baseline_five_year_attrition' }, { label: '近三年', key: 'baseline_three_year_attrition' }, { label: '近一年', key: 'baseline_one_year_attrition' } ];
+            const renderSmallChart = (container, rankId, type) => {
+                const rankName = BASE_CONFIG_TEMPLATE.ranks[rankId].name;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm flex flex-col items-center h-[260px]';
+                const title = document.createElement('h5');
+                title.className = 'text-sm font-bold text-gray-700 mb-2';
+                title.textContent = rankName;
+                wrapper.appendChild(title);
+                const canvasContainer = document.createElement('div');
+                canvasContainer.className = 'relative w-full flex-1';
+                const canvas = document.createElement('canvas');
+                canvasContainer.appendChild(canvas);
+                wrapper.appendChild(canvasContainer);
+                container.appendChild(wrapper);
+                let showBlueLine = true;
+                if (type === 'promotion' && (rankId === 'MASTER' || rankId === 'C_E')) { showBlueLine = false; }
+                const dataPoints = scenarios.map(s => { const params = DEFAULT_PARAMS[s.key]; const rankParams = params.ranks[rankId]; const val = type === 'attrition' ? (rankParams.attritionRate[0] || 0) : (rankParams.promotionRate[0] || 0); return val * 100; });
+                const avgVal = dataPoints.reduce((a,b)=>a+b,0) / dataPoints.length;
+                const targetObj = (currentConfig.id === 'target_scenario') ? currentConfig : DEFAULT_PARAMS.target_scenario;
+                const targetParams = targetObj.ranks[rankId];
+                const targetArr = type === 'attrition' ? targetParams.attritionRate : targetParams.promotionRate;
+                const targetVal = (targetArr.reduce((a,b)=>a+b,0) / targetArr.length) * 100;
+                new Chart(canvas, {
+                    type: 'line',
+                    data: { labels: ['近五年', '近三年', '近一年'], datasets: [{ label: '實際', data: showBlueLine ? dataPoints : [], borderColor: '#3B82F6', backgroundColor: '#3B82F6', borderWidth: 2, tension: 0.1, pointRadius: showBlueLine ? 4 : 0, datalabels: { display: showBlueLine, align: 'top', anchor: 'end', color: '#1d4ed8', font: { weight: 'bold', size: 11 }, formatter: (val) => Math.round(val) + '%' } }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: { avgLine: { type: 'line', yMin: avgVal, yMax: avgVal, borderColor: '#9CA3AF', borderWidth: 2.5, borderDash: [4, 4], label: { content: '平均', display: false } }, targetLine: { type: 'line', yMin: targetVal, yMax: targetVal, borderColor: '#EF4444', borderWidth: 1.5, borderDash: [2, 2], label: { content: '目標', display: false } } } } }, scales: { y: { beginAtZero: true, title: { display: true, text: '%' }, ticks: { precision: 0 }, grace: '10%' }, x: { offset: true } } }
+                });
+                if ( !(type === 'promotion' && (rankId === 'MASTER' || rankId === 'C_E')) ) {
+                    const infoDiv = document.createElement('div');
+                    infoDiv.className = 'mt-2 text-xs text-gray-600 flex justify-between w-full px-2';
+                    infoDiv.innerHTML = `<span>平均率: ${avgVal.toFixed(1)}%</span><span class="text-red-500 font-medium">目標率: ${targetVal.toFixed(1)}%</span>`;
+                    wrapper.appendChild(infoDiv);
+                }
+            };
+            RANK_IDS.DECK.forEach(r => { renderSmallChart(containers.deckAttr, r, 'attrition'); renderSmallChart(containers.deckProm, r, 'promotion'); });
+            RANK_IDS.ENGINE.forEach(r => { renderSmallChart(containers.engAttr, r, 'attrition'); renderSmallChart(containers.engProm, r, 'promotion'); });
+        }
+        
+        function attachGapTooltips() { /* ... kept as is ... */ const tooltipEl = document.getElementById('cell-tooltip'); if (!tooltipEl) return; document.querySelectorAll('.gap-cell').forEach(cell => { let enterTimer; if (cell._mouseEnterHandler) cell.removeEventListener('mouseenter', cell._mouseEnterHandler); if (cell._mouseLeaveHandler) cell.removeEventListener('mouseleave', cell._mouseLeaveHandler); cell._mouseEnterHandler = (e) => { const gap = parseFloat(e.target.dataset.gap); const demand = parseFloat(e.target.dataset.demand); const rankId = e.target.dataset.rank; const year = e.target.dataset.year; const rankName = currentConfig.ranks[rankId] ? currentConfig.ranks[rankId].name : rankId; if (isNaN(gap) || isNaN(demand) || !rankId) return; const est = estimateShoreMonths(rankId, gap, demand); let labelText = 'N/A'; let labelColor = 'text-gray-600'; if (est > 6) { labelText='嚴重寬裕'; labelColor='text-indigo-700'; } else if (est > 3.5) { labelText='寬裕'; labelColor='text-blue-700'; } else if (est > 2.5) { labelText='均衡'; labelColor='text-green-700'; } else if (est > 1.5) { labelText='輕微緊缺'; labelColor='text-yellow-700'; } else { labelText='嚴重緊缺'; labelColor='text-red-700'; } const rankConfig = currentConfig.ranks[rankId]; const reserveRate = rankConfig ? rankConfig.reserveRate : 1.5; const idealShore = ONBOARD_MONTHS * (reserveRate - 1); let html = `<div class="font-bold text-base mb-1">${rankName} (${year})</div><div class="font-medium ${labelColor} mb-1">${labelText}</div><hr class="border-gray-600 my-1.5"><div class="grid grid-cols-2 gap-x-2"><span class="muted">估算岸休 (月):</span> <span>${est === null ? 'N/A' : est + ' 個月'}</span><span class="muted">人力缺口:</span> <span>${gap} 人</span><span class="muted">總需求:</span> <span>${demand} 人</span><span class="muted">總供給:</span> <span>${Math.round(demand + gap)} 人</span></div><div class="text-xs text-gray-400 mt-2">定義：rankBaseline = ${ONBOARD_MONTHS} × (reserveRate - 1) => 此職級基準岸休: ${idealShore.toFixed(1)} 個月 (儲備率 ${reserveRate})<br>公式：est = rankBaseline × (總供給 / 總需求)</div>`; tooltipEl.innerHTML = html; enterTimer = setTimeout(() => { tooltipEl.style.display = 'block'; const rect = e.target.getBoundingClientRect(); const tipRect = tooltipEl.getBoundingClientRect(); let left = rect.left + window.scrollX + (rect.width / 2) - (tipRect.width / 2); let top = rect.top + window.scrollY - tipRect.height - 10; if (top < window.scrollY + 10) top = rect.bottom + window.scrollY + 10; if (left < window.scrollX + 10) left = window.scrollX + 10; if (left + tipRect.width > window.scrollX + window.innerWidth - 10) left = window.scrollX + window.innerWidth - tipRect.width - 10; tooltipEl.style.left = `${left}px`; tooltipEl.style.top = `${top}px`; }, 100); }; cell._mouseLeaveHandler = () => { clearTimeout(enterTimer); tooltipEl.style.display = 'none'; }; cell.addEventListener('mouseenter', cell._mouseEnterHandler); cell.addEventListener('mouseleave', cell._mouseLeaveHandler); }); }
+        function createControlPanel() { /* ... kept as is ... */ const config = currentConfig; const fleetEl = document.getElementById('fleet-forecast-inputs'); if(fleetEl) { fleetEl.innerHTML = ''; YEARS.forEach((year,i) => { fleetEl.innerHTML += `<div class="flex items-center justify-between"><label class="text-sm font-medium text-gray-700">${year}</label><input type="number" data-key="shipForecast.${i}" value="${config.shipForecast[i] || 0}" class="w-20 p-1 text-sm border border-gray-300 rounded-md text-right dynamic-input"></div>`; }); } const rowsEl = document.getElementById('recruitment-year-rows'); if(rowsEl) { rowsEl.innerHTML = ''; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const deckVal = (config.recruitment && Array.isArray(config.recruitment.deckHistory)) ? (config.recruitment.deckHistory[i] || 0) : 0; const engVal = (config.recruitment && Array.isArray(config.recruitment.engineHistory)) ? (config.recruitment.engineHistory[i] || 0) : 0; rowsEl.innerHTML += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" data-key="recruitment.deckHistory.${i}" value="${deckVal}" class="dynamic-input" /></td><td><input type="number" min="0" data-key="recruitment.engineHistory.${i}" value="${engVal}" class="dynamic-input" /></td></tr>`; } } const initialContainer = document.getElementById('initial-supply-inputs'); if(initialContainer) { initialContainer.innerHTML = '<div><div class="grid grid-cols-2 gap-2 items-center mb-1"><label class="text-sm font-bold text-gray-700">職級</label><label class="text-sm font-bold text-gray-700">總數</label></div></div>'; const rankOrder = ["MASTER","C_O","_2_O","_3_O","D_CADET","C_E","_2_E","_3_E","_4_E","E_CADET"]; rankOrder.forEach(rankId => { const name = config.ranks[rankId].name; const totalVal = config.initialSupply[rankId] !== undefined ? config.initialSupply[rankId] : 0; initialContainer.innerHTML += `<div class="grid grid-cols-2 gap-2 items-center"><div class="text-sm font-medium text-gray-700">${name}</div><input type="number" data-key="initialSupply.${rankId}" value="${totalVal}" class="p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`; }); } const deckButtonsEl = document.getElementById('deck-rank-buttons'); const engineButtonsEl = document.getElementById('engine-rank-buttons'); if(deckButtonsEl && engineButtonsEl) { deckButtonsEl.innerHTML = ''; engineButtonsEl.innerHTML = ''; RANK_IDS.DECK.forEach(rankId => deckButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); RANK_IDS.ENGINE.forEach(rankId => engineButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); } }
+        function renderRankDetailPanel(rankId) { /* ... kept as is ... */ const panel = document.getElementById('rank-detail-panel'); if (!panel || !currentConfig.ranks[rankId]) { if(panel) panel.innerHTML = '<p class="text-red-500">錯誤：找不到職級資料。</p>'; return; } const rankConfig = currentConfig.ranks[rankId]; const hasPromotion = (rankId !== 'MASTER' && rankId !== 'C_E'); const idealShoreMonths = (rankConfig.reserveRate) ? (ONBOARD_MONTHS * (rankConfig.reserveRate - 1)).toFixed(2) : (ONBOARD_MONTHS * (1.5 - 1)).toFixed(2); let html = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"><h4 class="text-lg font-bold text-blue-800">${rankConfig.name} - 年度參數設定</h4><div class="grid grid-cols-1 gap-4"><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">儲備率</label><input type="number" step="0.01" data-key="ranks.${rankId}.reserveRate" value="${rankConfig.reserveRate.toFixed(2)}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input dynamic-input-reserve" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">岸休月份數 (連動)</label><input type="number" step="0.1" value="${idealShoreMonths}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-shore" data-rank-id="${rankId}"></div></div>${rankId === '_3_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">A系列船數 (連動)</label><input type="number" step="1" value="${rankConfig.aSeriesCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-aseries" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div></div><p class="text-xs text-gray-500 mt-1 -translate-y-3">"每船需求" = 1 + (A系列船數 / 該年總船數)</p>` : `${rankId === '_4_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">脫硫塔船數 (連動)</label><input type="number" step="1" value="${rankConfig.scrubberCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-scrubber" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">船齡15年以上老船數 (連動)</label><input type="number" step="1" value="${rankConfig.oldShipCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-oldship" data-rank-id="${rankId}"></div></div><div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div><p class="text-xs text-gray-500 mt-1">"每船需求" = 1 + (脫硫塔船數+船齡15年以上老船數) / 該年總船數)</p>` : `<div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.01" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`}`}</div></div>`; html += `<div class="mt-4 table-container" style="max-height: 400px; overflow-y: auto;"><table class="year-param-table"><thead><tr><th>年份</th><th>流失率 (%)</th><th>晉升率 (%)</th></tr></thead><tbody>`; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const attritionVal = ((rankConfig.attritionRate && rankConfig.attritionRate[i] !== undefined) ? rankConfig.attritionRate[i] * 100 : 0).toFixed(0); const promotionVal = ((rankConfig.promotionRate && rankConfig.promotionRate[i] !== undefined) ? rankConfig.promotionRate[i] * 100 : 0).toFixed(0); html += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.attritionRate.${i}" value="${attritionVal}" class="dynamic-input dynamic-input-percent" /></td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.promotionRate.${i}" value="${promotionVal}" ${!hasPromotion ? 'disabled' : ''} class="dynamic-input dynamic-input-percent" /></td></tr>`; } html += `</tbody></table></div>`; panel.innerHTML = html; }
+        function updateAndRender({bypassDebounce=false}={}) { /* ... kept as is ... */ if (!bypassDebounce) { if (debounceTimer) clearTimeout(debounceTimer); debounceTimer = setTimeout(()=>updateAndRender({bypassDebounce:true}), 250); return; } if (currentConfig.ranks && currentConfig.ranks['_3_E']) { const rankConfig = currentConfig.ranks['_3_E']; const aSeriesCount = rankConfig.aSeriesCount || 0; const baseFleet = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_3_E'].needsPerShip = 1 + (aSeriesCount / baseFleet); const needsInput = document.querySelector(`[data-key="ranks._3_E.needsPerShip"]`); if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3); } if (currentConfig.ranks && currentConfig.ranks['_4_E']) { const rankConfig = currentConfig.ranks['_4_E']; const scrubberCount = rankConfig.scrubberCount || 0; const oldShipCount = rankConfig.oldShipCount || 0; const baseFleet = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_4_E'].needsPerShip = 1 + ((scrubberCount + oldShipCount) / baseFleet); const needsInput = document.querySelector(`[data-key="ranks._4_E.needsPerShip"]`); if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3); } const cfg = JSON.parse(JSON.stringify(currentConfig)); const results = runSimulation(cfg); lastResults = results; const activeTab = document.querySelector('.tab-content.active'); if (activeTab && activeTab.id === 'tab-supply-total') { renderDashboardTable(results, 'table-head-supply-total', 'table-body-supply-total', 'supply_total', [{ title: '甲板部', ids: ['MASTER','C_O','_2_O','_3_O'] }, { title: '機艙部', ids: ['C_E','_2_E','_3_E','_4_E'] }]); renderRecommendationTable(results, 'table-head-recommendation', 'table-body-recommendation'); renderDashboardTable(results, 'table-head-supply-deck-cadet', 'table-body-supply-deck-cadet', 'supply_total', [{ title: '', ids: ['D_CADET'] }]); renderDashboardTable(results, 'table-head-supply-engine-cadet', 'table-body-supply-engine-cadet', 'supply_total', [{ title: '', ids: ['E_CADET'] }]); renderCharts(results, ['chart-supply-total-deck', 'chart-supply-total-engine'], 'supply_total'); } else if (activeTab && activeTab.id === 'tab-total') { renderDashboardTable(results,'table-head-total','table-body-total','gap'); renderCharts(results,['chart-total-deck','chart-total-engine'],'gap'); } else if (activeTab && activeTab.id === 'tab-trends') { renderTrendTab(); } }
+        function addInputListeners(containerSelector) { /* ... kept as is ... */ const container = document.querySelector(containerSelector); if (!container) return; container.querySelectorAll('.dynamic-input').forEach(input => { if (input._handler) input.removeEventListener('input', input._handler); input._handler = (e) => { const key = e.target.dataset.key; if (!key) return; let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; setDeepValue(currentConfig, key, value); if (key.includes('reserveRate')) { const rankId = e.target.dataset.rankId; if (rankId) { const panel = e.target.closest('#rank-detail-panel'); const shoreInput = panel ? panel.querySelector(`.dynamic-input-shore[data-rank-id="${rankId}"]`) : null; if (shoreInput) { const idealShoreMonths = (ONBOARD_MONTHS * (value - 1)).toFixed(2); shoreInput.value = idealShoreMonths; } } } updateAndRender(); }; input.addEventListener('input', input._handler); }); container.querySelectorAll('.dynamic-input-shore').forEach(input => { if (input._shoreHandler) input.removeEventListener('input', input._shoreHandler); input._shoreHandler = (e) => { const rankId = e.target.dataset.rankId; let shoreMonths = parseFloat(e.target.value); if (isNaN(shoreMonths) || shoreMonths < 0) shoreMonths = 0; if (rankId) { const newReserveRate = (shoreMonths / ONBOARD_MONTHS) + 1; const reserveKey = `ranks.${rankId}.reserveRate`; setDeepValue(currentConfig, reserveKey, newReserveRate); const panel = e.target.closest('#rank-detail-panel'); const reserveInput = panel ? panel.querySelector(`.dynamic-input-reserve[data-rank-id="${rankId}"]`) : null; if (reserveInput) { reserveInput.value = newReserveRate.toFixed(2); } updateAndRender(); } }; input.addEventListener('input', input._shoreHandler); }); container.querySelectorAll('.dynamic-input-percent').forEach(input => { if (input._pHandler) input.removeEventListener('input', input._pHandler); input._pHandler = (e) => { const key = e.target.dataset.key; if (!key) return; let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; value = Math.max(0, Math.min(100, value)); setDeepValue(currentConfig, key, value / 100); updateAndRender(); }; input.addEventListener('input', input._pHandler); if (input._pBlur) input.removeEventListener('blur', input._pBlur); input._pBlur = (e) => { let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; e.target.value = value.toFixed(0); }; input.addEventListener('blur', input._pBlur); }); ['aseries','scrubber','oldship'].forEach(type => { container.querySelectorAll(`.dynamic-input-${type}`).forEach(input => { if (input[`_${type}Handler`]) input.removeEventListener('input', input[`_${type}Handler`]); input[`_${type}Handler`] = (e) => { const rankId = e.target.dataset.rankId; let val = parseFloat(e.target.value); if (isNaN(val) || val < 0) val = 0; if (rankId === '_3_E' && type === 'aseries') setDeepValue(currentConfig, `ranks.${rankId}.aSeriesCount`, val); if (rankId === '_4_E' && type === 'scrubber') setDeepValue(currentConfig, `ranks.${rankId}.scrubberCount`, val); if (rankId === '_4_E' && type === 'oldship') setDeepValue(currentConfig, `ranks.${rankId}.oldShipCount`, val); updateAndRender(); }; input.addEventListener('input', input[`_${type}Handler`]); }); }); }
+        function calculateOptimalFleet(config) { /* ... kept as is ... */ const GAP_CONSTRAINT = 10; const HIGH_RANKS = ['MASTER', 'C_O', 'C_E', '_2_E']; let optimalFleet = []; let prevSupply = Object.assign({}, config.initialSupply); for (let i = 0; i < YEARS.length; i++) { const originalTargetShips = config.shipForecast[i]; let low = 0; let high = originalTargetShips + 50; let bestFeasibleShips = 0; while (low <= high) { let midShips = Math.floor((low + high) / 2); if (midShips === 0) { bestFeasibleShips = 0; low = 1; continue; } const yearResult = simulateOneYear(config, prevSupply, midShips, i); let isFeasible = true; for (const rankId of HIGH_RANKS) { if (yearResult.gaps.total[rankId] < GAP_CONSTRAINT) { isFeasible = false; break; } } if (isFeasible) { bestFeasibleShips = midShips; low = midShips + 1; } else { high = midShips - 1; } } optimalFleet.push(bestFeasibleShips); const finalYearResult = simulateOneYear(config, prevSupply, bestFeasibleShips, i); prevSupply = finalYearResult.nextSupply; } return optimalFleet; }
+        function loadScenario(name) { /* ... kept as is ... */ const scenario = DEFAULT_PARAMS[name]; currentConfig = scenario ? JSON.parse(JSON.stringify(scenario)) : JSON.parse(JSON.stringify(DEFAULT_PARAMS.baseline_one_year_attrition)); if (currentConfig.ranks && currentConfig.ranks['_3_E']) { const aSeries = currentConfig.ranks['_3_E'].aSeriesCount || 0; const base = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_3_E'].needsPerShip = 1 + (aSeries / base); } if (currentConfig.ranks && currentConfig.ranks['_4_E']) { const scrub = currentConfig.ranks['_4_E'].scrubberCount || 0; const old = currentConfig.ranks['_4_E'].oldShipCount || 0; const base = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_4_E'].needsPerShip = 1 + ((scrub + old) / base); } currentSelectedRank = 'MASTER'; createControlPanel(); renderRankDetailPanel(currentSelectedRank); addInputListeners('#controls-container'); addInputListeners('#rank-detail-panel'); const baselineBtn = document.getElementById('load-baseline'); const bl3Btn = document.getElementById('load-baseline-3y'); const bl5Btn = document.getElementById('load-baseline-5y'); const targetBtn = document.getElementById('load-target-scenario'); [baselineBtn, bl3Btn, bl5Btn, targetBtn].forEach(b => { if(b) b.className = 'scenario-btn'; }); if (name === 'target_scenario' && targetBtn) targetBtn.classList.add('active','target'); else { if (name === 'baseline_one_year_attrition' && baselineBtn) baselineBtn.classList.add('active','baseline'); if (name === 'baseline_three_year_attrition' && bl3Btn) bl3Btn.classList.add('active','baseline'); if (name === 'baseline_five_year_attrition' && bl5Btn) bl5Btn.classList.add('active','baseline'); } wireRankButtons(); styleRankButtons(); updateAndRender({bypassDebounce:true}); }
+        function wireRankButtons() { const selector = document.getElementById('rank-params-selector'); if (!selector || selector._wired) return; selector._wired = true; selector.addEventListener('click', (e) => { const btn = e.target.closest('.rank-selector-btn'); if (!btn) return; const rankId = btn.dataset.rankId; if (!rankId || rankId === currentSelectedRank) return; currentSelectedRank = rankId; renderRankDetailPanel(rankId); addInputListeners('#rank-detail-panel'); styleRankButtons(); }); }
+        function styleRankButtons() { document.querySelectorAll('.rank-selector-btn').forEach(btn => { if (btn.dataset.rankId === currentSelectedRank) btn.classList.add('active'); else btn.classList.remove('active'); }); }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('load-baseline').addEventListener('click', () => loadScenario('baseline_one_year_attrition'));
+            document.getElementById('load-baseline-3y').addEventListener('click', () => loadScenario('baseline_three_year_attrition'));
+            document.getElementById('load-baseline-5y').addEventListener('click', () => loadScenario('baseline_five_year_attrition'));
+            document.getElementById('load-target-scenario').addEventListener('click', () => loadScenario('target_scenario'));
+            
+            const nav = document.getElementById('tab-nav');
+            if (nav) {
+                nav.addEventListener('click', (ev) => {
+                    const btn = ev.target.closest('.tab-btn');
+                    if (!btn) return;
+                    ev.preventDefault();
+                    nav.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const tab = btn.dataset.tab;
+                    if (!tab) return;
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    const el = document.getElementById(`tab-${tab}`);
+                    if (el) el.classList.add('active');
+                    updateAndRender({bypassDebounce:true});
+                });
+            }
+
+            loadScenario('baseline_one_year_attrition');
+        });
+    </script>
+</body>
+</html>
