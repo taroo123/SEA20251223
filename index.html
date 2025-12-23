@@ -58,6 +58,16 @@
                 <div id="controls-container" class="w-full h-full overflow-y-auto p-6 bg-white opacity-0 pointer-events-none transition-opacity duration-300 controls-scroll">
                     <h2 class="text-xl font-bold text-gray-800 mb-4">參數控制面板</h2>
 
+                    <div class="mb-6 flex gap-2">
+                        <button onclick="exportToCSV()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">
+                            匯出 Excel (CSV)
+                        </button>
+                        <button onclick="window.print()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm">
+                            列印 PDF 報表
+                        </button>
+                    </div>
+                
+
                     <div class="mb-6 p-4 bg-gray-50 rounded-lg">
                         <label class="block text-sm font-bold text-gray-700 mb-3">以每年1/1~12/31區間結算</label>
                         <div class="flex flex-col gap-2">
@@ -671,7 +681,66 @@
             RANK_IDS.DECK.forEach(r => { renderSmallChart(containers.deckAttr, r, 'attrition'); renderSmallChart(containers.deckProm, r, 'promotion'); });
             RANK_IDS.ENGINE.forEach(r => { renderSmallChart(containers.engAttr, r, 'attrition'); renderSmallChart(containers.engProm, r, 'promotion'); });
         }
+
+
+                // 匯出 CSV 功能
+        function exportToCSV() {
+            if (!lastResults) {
+                alert("請先運行模擬以產生數據！");
+                return;
+            }
         
+            let csvContent = "\ufeff"; // 解決 Excel 中文亂碼
+            csvContent += "年份," + YEARS.join(",") + "\n";
+        
+            // 1. 匯出各職級缺口數據
+            csvContent += "\n--- 職級缺口 (人) ---\n";
+            Object.keys(lastResults.total).forEach(rankId => {
+                const rankName = currentConfig.ranks[rankId].name;
+                const gaps = lastResults.total[rankId].gap.map(v => Math.round(v));
+                csvContent += rankName + "," + gaps.join(",") + "\n";
+            });
+        
+            // 2. 匯出建議招募人數
+            csvContent += "\n--- 建議年度外招人數 ---\n";
+            const deckRec = lastResults.recommendation.deck.map(v => Math.round(v));
+            const engRec = lastResults.recommendation.engine.map(v => Math.round(v));
+            csvContent += "建議甲板外招," + deckRec.join(",") + "\n";
+            csvContent += "建議機艙外招," + engRec.join(",") + "\n";
+        
+            // 下載檔案
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `人力趨勢報表_${new Date().toLocaleDateString()}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
         function attachGapTooltips() { /* ... kept as is ... */ const tooltipEl = document.getElementById('cell-tooltip'); if (!tooltipEl) return; document.querySelectorAll('.gap-cell').forEach(cell => { let enterTimer; if (cell._mouseEnterHandler) cell.removeEventListener('mouseenter', cell._mouseEnterHandler); if (cell._mouseLeaveHandler) cell.removeEventListener('mouseleave', cell._mouseLeaveHandler); cell._mouseEnterHandler = (e) => { const gap = parseFloat(e.target.dataset.gap); const demand = parseFloat(e.target.dataset.demand); const rankId = e.target.dataset.rank; const year = e.target.dataset.year; const rankName = currentConfig.ranks[rankId] ? currentConfig.ranks[rankId].name : rankId; if (isNaN(gap) || isNaN(demand) || !rankId) return; const est = estimateShoreMonths(rankId, gap, demand); let labelText = 'N/A'; let labelColor = 'text-gray-600'; if (est > 6) { labelText='嚴重寬裕'; labelColor='text-indigo-700'; } else if (est > 3.5) { labelText='寬裕'; labelColor='text-blue-700'; } else if (est > 2.5) { labelText='均衡'; labelColor='text-green-700'; } else if (est > 1.5) { labelText='輕微緊缺'; labelColor='text-yellow-700'; } else { labelText='嚴重緊缺'; labelColor='text-red-700'; } const rankConfig = currentConfig.ranks[rankId]; const reserveRate = rankConfig ? rankConfig.reserveRate : 1.5; const idealShore = ONBOARD_MONTHS * (reserveRate - 1); let html = `<div class="font-bold text-base mb-1">${rankName} (${year})</div><div class="font-medium ${labelColor} mb-1">${labelText}</div><hr class="border-gray-600 my-1.5"><div class="grid grid-cols-2 gap-x-2"><span class="muted">估算岸休 (月):</span> <span>${est === null ? 'N/A' : est + ' 個月'}</span><span class="muted">人力缺口:</span> <span>${gap} 人</span><span class="muted">總需求:</span> <span>${demand} 人</span><span class="muted">總供給:</span> <span>${Math.round(demand + gap)} 人</span></div><div class="text-xs text-gray-400 mt-2">定義：rankBaseline = ${ONBOARD_MONTHS} × (reserveRate - 1) => 此職級基準岸休: ${idealShore.toFixed(1)} 個月 (儲備率 ${reserveRate})<br>公式：est = rankBaseline × (總供給 / 總需求)</div>`; tooltipEl.innerHTML = html; enterTimer = setTimeout(() => { tooltipEl.style.display = 'block'; const rect = e.target.getBoundingClientRect(); const tipRect = tooltipEl.getBoundingClientRect(); let left = rect.left + window.scrollX + (rect.width / 2) - (tipRect.width / 2); let top = rect.top + window.scrollY - tipRect.height - 10; if (top < window.scrollY + 10) top = rect.bottom + window.scrollY + 10; if (left < window.scrollX + 10) left = window.scrollX + 10; if (left + tipRect.width > window.scrollX + window.innerWidth - 10) left = window.scrollX + window.innerWidth - tipRect.width - 10; tooltipEl.style.left = `${left}px`; tooltipEl.style.top = `${top}px`; }, 100); }; cell._mouseLeaveHandler = () => { clearTimeout(enterTimer); tooltipEl.style.display = 'none'; }; cell.addEventListener('mouseenter', cell._mouseEnterHandler); cell.addEventListener('mouseleave', cell._mouseLeaveHandler); }); }
         function createControlPanel() { /* ... kept as is ... */ const config = currentConfig; const fleetEl = document.getElementById('fleet-forecast-inputs'); if(fleetEl) { fleetEl.innerHTML = ''; YEARS.forEach((year,i) => { fleetEl.innerHTML += `<div class="flex items-center justify-between"><label class="text-sm font-medium text-gray-700">${year}</label><input type="number" data-key="shipForecast.${i}" value="${config.shipForecast[i] || 0}" class="w-20 p-1 text-sm border border-gray-300 rounded-md text-right dynamic-input"></div>`; }); } const rowsEl = document.getElementById('recruitment-year-rows'); if(rowsEl) { rowsEl.innerHTML = ''; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const deckVal = (config.recruitment && Array.isArray(config.recruitment.deckHistory)) ? (config.recruitment.deckHistory[i] || 0) : 0; const engVal = (config.recruitment && Array.isArray(config.recruitment.engineHistory)) ? (config.recruitment.engineHistory[i] || 0) : 0; rowsEl.innerHTML += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" data-key="recruitment.deckHistory.${i}" value="${deckVal}" class="dynamic-input" /></td><td><input type="number" min="0" data-key="recruitment.engineHistory.${i}" value="${engVal}" class="dynamic-input" /></td></tr>`; } } const initialContainer = document.getElementById('initial-supply-inputs'); if(initialContainer) { initialContainer.innerHTML = '<div><div class="grid grid-cols-2 gap-2 items-center mb-1"><label class="text-sm font-bold text-gray-700">職級</label><label class="text-sm font-bold text-gray-700">總數</label></div></div>'; const rankOrder = ["MASTER","C_O","_2_O","_3_O","D_CADET","C_E","_2_E","_3_E","_4_E","E_CADET"]; rankOrder.forEach(rankId => { const name = config.ranks[rankId].name; const totalVal = config.initialSupply[rankId] !== undefined ? config.initialSupply[rankId] : 0; initialContainer.innerHTML += `<div class="grid grid-cols-2 gap-2 items-center"><div class="text-sm font-medium text-gray-700">${name}</div><input type="number" data-key="initialSupply.${rankId}" value="${totalVal}" class="p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`; }); } const deckButtonsEl = document.getElementById('deck-rank-buttons'); const engineButtonsEl = document.getElementById('engine-rank-buttons'); if(deckButtonsEl && engineButtonsEl) { deckButtonsEl.innerHTML = ''; engineButtonsEl.innerHTML = ''; RANK_IDS.DECK.forEach(rankId => deckButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); RANK_IDS.ENGINE.forEach(rankId => engineButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); } }
         function renderRankDetailPanel(rankId) { /* ... kept as is ... */ const panel = document.getElementById('rank-detail-panel'); if (!panel || !currentConfig.ranks[rankId]) { if(panel) panel.innerHTML = '<p class="text-red-500">錯誤：找不到職級資料。</p>'; return; } const rankConfig = currentConfig.ranks[rankId]; const hasPromotion = (rankId !== 'MASTER' && rankId !== 'C_E'); const idealShoreMonths = (rankConfig.reserveRate) ? (ONBOARD_MONTHS * (rankConfig.reserveRate - 1)).toFixed(2) : (ONBOARD_MONTHS * (1.5 - 1)).toFixed(2); let html = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"><h4 class="text-lg font-bold text-blue-800">${rankConfig.name} - 年度參數設定</h4><div class="grid grid-cols-1 gap-4"><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">儲備率</label><input type="number" step="0.01" data-key="ranks.${rankId}.reserveRate" value="${rankConfig.reserveRate.toFixed(2)}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input dynamic-input-reserve" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">岸休月份數 (連動)</label><input type="number" step="0.1" value="${idealShoreMonths}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-shore" data-rank-id="${rankId}"></div></div>${rankId === '_3_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">A系列船數 (連動)</label><input type="number" step="1" value="${rankConfig.aSeriesCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-aseries" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div></div><p class="text-xs text-gray-500 mt-1 -translate-y-3">"每船需求" = 1 + (A系列船數 / 該年總船數)</p>` : `${rankId === '_4_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">脫硫塔船數 (連動)</label><input type="number" step="1" value="${rankConfig.scrubberCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-scrubber" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">船齡15年以上老船數 (連動)</label><input type="number" step="1" value="${rankConfig.oldShipCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-oldship" data-rank-id="${rankId}"></div></div><div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div><p class="text-xs text-gray-500 mt-1">"每船需求" = 1 + (脫硫塔船數+船齡15年以上老船數) / 該年總船數)</p>` : `<div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.01" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`}`}</div></div>`; html += `<div class="mt-4 table-container" style="max-height: 400px; overflow-y: auto;"><table class="year-param-table"><thead><tr><th>年份</th><th>流失率 (%)</th><th>晉升率 (%)</th></tr></thead><tbody>`; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const attritionVal = ((rankConfig.attritionRate && rankConfig.attritionRate[i] !== undefined) ? rankConfig.attritionRate[i] * 100 : 0).toFixed(0); const promotionVal = ((rankConfig.promotionRate && rankConfig.promotionRate[i] !== undefined) ? rankConfig.promotionRate[i] * 100 : 0).toFixed(0); html += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.attritionRate.${i}" value="${attritionVal}" class="dynamic-input dynamic-input-percent" /></td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.promotionRate.${i}" value="${promotionVal}" ${!hasPromotion ? 'disabled' : ''} class="dynamic-input dynamic-input-percent" /></td></tr>`; } html += `</tbody></table></div>`; panel.innerHTML = html; }
