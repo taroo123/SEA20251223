@@ -683,47 +683,65 @@
         }
 
 
-                // 匯出 CSV 功能
-        function exportToCSV() {
-            if (!lastResults) {
-                alert("請先運行模擬以產生數據！");
-                return;
-            }
+// 修正後的匯出功能
+function exportToCSV() {
+    // 1. 檢查數據是否存在 (確保 simulation 已經跑過)
+    if (typeof lastResults === 'undefined' || !lastResults || !lastResults.total) {
+        alert("請先在左側面板調整參數或點擊預測，產生數據後再匯出！");
+        return;
+    }
+
+    try {
+        // 加上 UTF-8 BOM 確保 Excel 開啟中文不亂碼
+        let csvContent = "\ufeff"; 
         
-            let csvContent = "\ufeff"; // 解決 Excel 中文亂碼
-            csvContent += "年份," + YEARS.join(",") + "\n";
+        // 報表標頭
+        csvContent += "人力趨勢模擬預測報表 (2025-2034)\n";
+        csvContent += "產出日期," + new Date().toLocaleString() + "\n";
+        csvContent += "設定情境," + (document.querySelector('.scenario-btn.active')?.innerText || "自定義") + "\n\n";
         
-            // 1. 匯出各職級缺口數據
-            csvContent += "\n--- 職級缺口 (人) ---\n";
-            Object.keys(lastResults.total).forEach(rankId => {
-                const rankName = currentConfig.ranks[rankId].name;
-                const gaps = lastResults.total[rankId].gap.map(v => Math.round(v));
-                csvContent += rankName + "," + gaps.join(",") + "\n";
-            });
-        
-            // 2. 匯出建議招募人數
-            csvContent += "\n--- 建議年度外招人數 ---\n";
+        // 年份標題列
+        const headerYears = ["職級/項目", "現行", "2025", "2026", "2027", "2028", "2029", "2030", "2031", "2032", "2033", "2034"];
+        csvContent += headerYears.join(",") + "\n";
+
+        // 2. 匯出各職級缺口數據 (Gap)
+        csvContent += "--- 職級缺口 (負數表示不足) ---\n";
+        Object.keys(lastResults.total).forEach(rankId => {
+            const rankName = (currentConfig.ranks[rankId]) ? currentConfig.ranks[rankId].name : rankId;
+            const gaps = lastResults.total[rankId].gap.map(v => Math.round(v));
+            // 現行設為 "-" 或 0
+            csvContent += rankName + ",-," + gaps.join(",") + "\n";
+        });
+
+        // 3. 匯出建議招募規劃
+        csvContent += "\n--- 建議年度招募規劃 (補齊缺口所需外招人數) ---\n";
+        if (lastResults.recommendation) {
             const deckRec = lastResults.recommendation.deck.map(v => Math.round(v));
             const engRec = lastResults.recommendation.engine.map(v => Math.round(v));
-            csvContent += "建議甲板外招," + deckRec.join(",") + "\n";
-            csvContent += "建議機艙外招," + engRec.join(",") + "\n";
-        
-            // 下載檔案
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `人力趨勢報表_${new Date().toLocaleDateString()}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            csvContent += "建議甲板部外招 (大副/二副),-," + deckRec.join(",") + "\n";
+            csvContent += "建議機艙部外招 (大管/二管),-," + engRec.join(",") + "\n";
         }
 
+        // 4. 匯出實習生設定 (目前設定值)
+        csvContent += "\n--- 實習生預計投入人數 (輸入值) ---\n";
+        csvContent += "甲板實習生,-," + currentConfig.recruitment.deckHistory.join(",") + "\n";
+        csvContent += "機艙實習生,-," + currentConfig.recruitment.engineHistory.join(",") + "\n";
 
-
-
-
+        // 建立下載連結
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Manpower_Report_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+    } catch (error) {
+        console.error("匯出失敗:", error);
+        alert("匯出過程發生錯誤，請檢查控制台。");
+    }
+}
 
 
 
