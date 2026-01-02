@@ -38,9 +38,37 @@
         .year-param-table th { background-color: #f9fafb; }
         .year-param-table input { width: 100%; padding: 4px; text-align: center; border: 1px solid #d1d5db; border-radius: 4px; }
         .year-param-table input:disabled { background-color: #f3f4f6; color: #9ca3af; }
+		/* 新增：保存功能样式 */
+		.save-status-bar { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-bottom: 1px solid #bfdbfe; padding: 8px 12px; font-size: 0.75rem; color: #1e40af; text-align: center; font-weight: 500; }
+		.toast-notification { position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); z-index: 10000; opacity: 0; transform: translateY(-20px); transition: all 0.3s ease; pointer-events: none; font-weight: 500; }
+		.toast-notification.show { opacity: 1; transform: translateY(0); }
+		.toast-notification.error { background: #ef4444; }
+		.btn-save { background: #10b981; color: white; font-weight: 600; transition: all 0.2s ease; }
+		.btn-save:hover { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3); }
+		.btn-load { background: #3b82f6; color: white; font-weight: 600; transition: all 0.2s ease; }
+		.btn-load:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3); }
+		.btn-reset { background: #f59e0b; color: white; font-weight: 600; transition: all 0.2s ease; }
+		.btn-reset:hover { background: #d97706; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3); }
+
+		/* 保存記錄列表樣式 */
+		.save-slot { padding: 8px 12px; margin-bottom: 6px; border: 1px solid #d1d5db; border-radius: 6px; background: white; cursor: pointer; transition: all 0.2s ease; }
+		.save-slot:hover { background: #f3f4f6; border-color: #3b82f6; }
+		.save-slot.empty { opacity: 0.5; cursor: default; border-style: dashed; }
+		.save-slot.empty:hover { background: white; border-color: #d1d5db; }
+		.save-slot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+		.save-slot-title { font-weight: 600; font-size: 0.875rem; color: #374151; }
+		.save-slot-time { font-size: 0.75rem; color: #6b7280; }
+		.save-slot-actions { display: flex; gap: 4px; margin-top: 4px; }
+		.slot-btn { padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; transition: all 0.15s ease; }
+		.slot-btn-load { background: #3b82f6; color: white; }
+		.slot-btn-load:hover { background: #2563eb; }
+		.slot-btn-delete { background: #ef4444; color: white; }
+		.slot-btn-delete:hover { background: #dc2626; }
     </style>
 </head>
 <body class="bg-gray-50">
+<div id="toast-notification" class="toast-notification"></div>
+
     <div class="flex flex-row min-h-screen">
         
         <!-- SIDEBAR WRAPPER (Click to Expand, Mouseleave to Collapse) -->
@@ -55,19 +83,37 @@
 
             <!-- Expanded Content -->
             <div class="w-[420px] h-full overflow-hidden">
+			<!-- 新增：保存狀態欄 -->
+			<div id="save-status-bar" class="save-status-bar">
+					上次保存：從未保存
+			</div>
                 <div id="controls-container" class="w-full h-full overflow-y-auto p-6 bg-white opacity-0 pointer-events-none transition-opacity duration-300 controls-scroll">
+
+
                     <h2 class="text-xl font-bold text-gray-800 mb-4">參數控制面板</h2>
 
-                    <div class="mb-6 flex gap-2">
-                        <button onclick="exportToCSV()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">
-                            匯出 Excel (CSV)
-                        </button>
-                        <button onclick="window.print()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm">
-                            列印 PDF 報表
-                        </button>
-                    </div>
+			<div class="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+				<h3 class="text-sm font-bold text-gray-800 mb-3">📁 參數保存管理</h3>
+				
+				<!-- 保存按鈕 -->
+				<div class="mb-3">
+					<button onclick="showSaveSlotSelector()" class="btn-save py-2 px-4 rounded text-sm w-full">
+						💾 保存當前參數到記錄槽
+					</button>
+				</div>
+				
+				<!-- 保存記錄列表 -->
+				<div class="text-xs font-semibold text-gray-700 mb-2">已保存的記錄：</div>
+				<div id="save-slots-list" class="space-y-2 mb-3">
+					<!-- 動態生成 -->
+				</div>
+				
+				<!-- 重置按鈕 -->
+				<button onclick="resetToDefaults()" class="btn-reset py-2 px-4 rounded text-sm w-full">
+					🔄 重置為預設值
+				</button>
+			</div>
                 
-
                     <div class="mb-6 p-4 bg-gray-50 rounded-lg">
                         <label class="block text-sm font-bold text-gray-700 mb-3">以每年1/1~12/31區間結算</label>
                         <div class="flex flex-col gap-2">
@@ -359,6 +405,262 @@
         const sidebarContent = document.getElementById('controls-container');
         sidebar.addEventListener('click', (e) => { if (sidebar.classList.contains('w-3')) { sidebar.classList.remove('w-3'); sidebar.classList.add('w-[420px]'); sidebar.classList.remove('cursor-pointer'); sidebarLabel.classList.add('opacity-0'); sidebarContent.classList.remove('opacity-0', 'pointer-events-none'); } });
         sidebar.addEventListener('mouseleave', () => { if (sidebar.classList.contains('w-[420px]')) { sidebar.classList.add('w-3'); sidebar.classList.remove('w-[420px]'); sidebar.classList.add('cursor-pointer'); sidebarLabel.classList.remove('opacity-0'); sidebarContent.classList.add('opacity-0', 'pointer-events-none'); } });
+
+
+		// ============================================
+		// 新增：參數保存功能
+		// ============================================
+
+// ============================================
+// 新增：參數保存功能（支持3個記錄槽）
+// ============================================
+
+		const MAX_SAVE_SLOTS = 3;
+
+		function showToast(message, type = 'success') {
+			const toast = document.getElementById('toast-notification');
+			toast.textContent = message;
+			toast.className = 'toast-notification show';
+			if (type === 'error') {
+				toast.classList.add('error');
+			} else {
+				toast.classList.remove('error');
+			}
+			
+			setTimeout(() => {
+				toast.classList.remove('show');
+			}, 3000);
+		}
+
+		function updateSaveStatus(timestamp = null) {
+			const statusBar = document.getElementById('save-status-bar');
+			if (timestamp) {
+				const date = new Date(timestamp);
+				const formatted = date.toLocaleString('zh-TW', {
+					year: 'numeric',
+					month: '2-digit',
+					day: '2-digit',
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit'
+				});
+				statusBar.textContent = `上次操作：${formatted}`;
+			} else {
+				statusBar.textContent = '上次保存：從未保存';
+			}
+		}
+
+		// 獲取所有保存記錄
+		function getAllSaveSlots() {
+			const slots = [];
+			for (let i = 1; i <= MAX_SAVE_SLOTS; i++) {
+				const key = `manpowerSimulatorSlot${i}`;
+				const data = localStorage.getItem(key);
+				if (data) {
+					try {
+						slots.push({ slotNumber: i, data: JSON.parse(data) });
+					} catch (e) {
+						console.error(`讀取槽位 ${i} 失敗:`, e);
+					}
+				} else {
+					slots.push({ slotNumber: i, data: null });
+				}
+			}
+			return slots;
+		}
+
+		// 渲染保存記錄列表
+		function renderSaveSlots() {
+			const container = document.getElementById('save-slots-list');
+			if (!container) return;
+			
+			const slots = getAllSaveSlots();
+			container.innerHTML = '';
+			
+			slots.forEach(slot => {
+				const div = document.createElement('div');
+				
+				if (slot.data) {
+					const date = new Date(slot.data.timestamp);
+					const timeStr = date.toLocaleString('zh-TW', {
+						month: '2-digit',
+						day: '2-digit',
+						hour: '2-digit',
+						minute: '2-digit'
+					});
+					
+					const scenarioName = getScenarioDisplayName(slot.data.config.id);
+					
+					div.className = 'save-slot';
+					div.innerHTML = `
+						<div class="save-slot-header">
+							<span class="save-slot-title">記錄 ${slot.slotNumber}</span>
+							<span class="save-slot-time">${timeStr}</span>
+						</div>
+						<div class="text-xs text-gray-600">情境: ${scenarioName}</div>
+						<div class="save-slot-actions">
+							<button class="slot-btn slot-btn-load" onclick="loadFromSlot(${slot.slotNumber})">📂 載入</button>
+							<button class="slot-btn slot-btn-delete" onclick="deleteSlot(${slot.slotNumber})">🗑️ 刪除</button>
+						</div>
+					`;
+				} else {
+					div.className = 'save-slot empty';
+					div.innerHTML = `
+						<div class="save-slot-header">
+							<span class="save-slot-title">記錄 ${slot.slotNumber}</span>
+						</div>
+						<div class="text-xs text-gray-500">空槽位</div>
+					`;
+				}
+				
+				container.appendChild(div);
+			});
+		}
+
+		// 獲取情境顯示名稱
+		function getScenarioDisplayName(id) {
+			const names = {
+				'baseline_one_year_attrition': '近一年',
+				'baseline_three_year_attrition': '近三年',
+				'baseline_five_year_attrition': '近五年',
+				'target_scenario': '目標情境'
+			};
+			return names[id] || '未知情境';
+		}
+
+		// 顯示保存槽位選擇器
+		function showSaveSlotSelector() {
+			const slots = getAllSaveSlots();
+			let message = '選擇要保存到哪個記錄槽：\n\n';
+			
+			slots.forEach(slot => {
+				if (slot.data) {
+					const date = new Date(slot.data.timestamp);
+					const timeStr = date.toLocaleString('zh-TW', {
+						month: '2-digit',
+						day: '2-digit',
+						hour: '2-digit',
+						minute: '2-digit'
+					});
+					message += `${slot.slotNumber}. [已使用] ${timeStr}\n`;
+				} else {
+					message += `${slot.slotNumber}. [空槽位]\n`;
+				}
+			});
+			
+			message += '\n請輸入 1-3 選擇槽位：';
+			
+			const input = prompt(message);
+			const slotNumber = parseInt(input);
+			
+			if (slotNumber >= 1 && slotNumber <= MAX_SAVE_SLOTS) {
+				const existingSlot = slots.find(s => s.slotNumber === slotNumber);
+				if (existingSlot.data) {
+					if (confirm(`槽位 ${slotNumber} 已有資料，確定要覆蓋嗎？`)) {
+						saveToSlot(slotNumber);
+					}
+				} else {
+					saveToSlot(slotNumber);
+				}
+			} else if (input !== null) {
+				showToast('❌ 請輸入 1-3 之間的數字', 'error');
+			}
+		}
+
+		// 保存到指定槽位
+		function saveToSlot(slotNumber) {
+			try {
+				const dataToSave = {
+					config: currentConfig,
+					timestamp: Date.now(),
+					selectedRank: currentSelectedRank
+				};
+				
+				const key = `manpowerSimulatorSlot${slotNumber}`;
+				localStorage.setItem(key, JSON.stringify(dataToSave));
+				
+				updateSaveStatus(dataToSave.timestamp);
+				renderSaveSlots();
+				showToast(`✅ 已保存到記錄 ${slotNumber}！`, 'success');
+			} catch (error) {
+				console.error('保存失敗:', error);
+				showToast('❌ 保存失敗，請重試', 'error');
+			}
+		}
+
+		// 從指定槽位載入
+		function loadFromSlot(slotNumber) {
+			try {
+				const key = `manpowerSimulatorSlot${slotNumber}`;
+				const savedData = localStorage.getItem(key);
+				
+				if (!savedData) {
+					showToast('⚠️ 該槽位無資料', 'error');
+					return;
+				}
+				
+				const parsed = JSON.parse(savedData);
+				currentConfig = parsed.config;
+				currentSelectedRank = parsed.selectedRank || 'MASTER';
+				
+				// 重新渲染界面
+				createControlPanel();
+				renderRankDetailPanel(currentSelectedRank);
+				addInputListeners('#controls-container');
+				addInputListeners('#rank-detail-panel');
+				updateAndRender({bypassDebounce: true});
+				
+				updateSaveStatus(parsed.timestamp);
+				showToast(`📂 已載入記錄 ${slotNumber}`, 'success');
+			} catch (error) {
+				console.error('載入失敗:', error);
+				showToast('❌ 載入失敗，請重試', 'error');
+			}
+		}
+
+		// 刪除指定槽位
+		function deleteSlot(slotNumber) {
+			if (confirm(`確定要刪除記錄 ${slotNumber} 嗎？`)) {
+				const key = `manpowerSimulatorSlot${slotNumber}`;
+				localStorage.removeItem(key);
+				renderSaveSlots();
+				showToast(`🗑️ 已刪除記錄 ${slotNumber}`, 'success');
+			}
+		}
+
+		// 重置為預設值
+		function resetToDefaults() {
+			if (confirm('確定要重置所有參數為預設值嗎？此操作無法撤銷。')) {
+				const currentScenario = currentConfig.id || 'baseline_one_year_attrition';
+				loadScenario(currentScenario);
+				showToast('🔄 已重置為預設值', 'success');
+			}
+		}
+
+		// 頁面載入時初始化
+		function tryRestoreSavedData() {
+			try {
+				renderSaveSlots();
+				
+				// 檢查是否有任何保存記錄
+				const slots = getAllSaveSlots();
+				const hasAnySave = slots.some(s => s.data !== null);
+				
+				if (hasAnySave) {
+					const latestSlot = slots
+						.filter(s => s.data !== null)
+						.sort((a, b) => b.data.timestamp - a.data.timestamp)[0];
+					
+					if (latestSlot) {
+						updateSaveStatus(latestSlot.data.timestamp);
+					}
+				}
+			} catch (error) {
+				console.error('恢復保存狀態失敗:', error);
+			}
+		}
+
+
 
         function setDeepValue(obj, path, value) {
             const keys = path.split('.');
@@ -740,7 +1042,52 @@
         function attachGapTooltips() { /* ... kept as is ... */ const tooltipEl = document.getElementById('cell-tooltip'); if (!tooltipEl) return; document.querySelectorAll('.gap-cell').forEach(cell => { let enterTimer; if (cell._mouseEnterHandler) cell.removeEventListener('mouseenter', cell._mouseEnterHandler); if (cell._mouseLeaveHandler) cell.removeEventListener('mouseleave', cell._mouseLeaveHandler); cell._mouseEnterHandler = (e) => { const gap = parseFloat(e.target.dataset.gap); const demand = parseFloat(e.target.dataset.demand); const rankId = e.target.dataset.rank; const year = e.target.dataset.year; const rankName = currentConfig.ranks[rankId] ? currentConfig.ranks[rankId].name : rankId; if (isNaN(gap) || isNaN(demand) || !rankId) return; const est = estimateShoreMonths(rankId, gap, demand); let labelText = 'N/A'; let labelColor = 'text-gray-600'; if (est > 6) { labelText='嚴重寬裕'; labelColor='text-indigo-700'; } else if (est > 3.5) { labelText='寬裕'; labelColor='text-blue-700'; } else if (est > 2.5) { labelText='均衡'; labelColor='text-green-700'; } else if (est > 1.5) { labelText='輕微緊缺'; labelColor='text-yellow-700'; } else { labelText='嚴重緊缺'; labelColor='text-red-700'; } const rankConfig = currentConfig.ranks[rankId]; const reserveRate = rankConfig ? rankConfig.reserveRate : 1.5; const idealShore = ONBOARD_MONTHS * (reserveRate - 1); let html = `<div class="font-bold text-base mb-1">${rankName} (${year})</div><div class="font-medium ${labelColor} mb-1">${labelText}</div><hr class="border-gray-600 my-1.5"><div class="grid grid-cols-2 gap-x-2"><span class="muted">估算岸休 (月):</span> <span>${est === null ? 'N/A' : est + ' 個月'}</span><span class="muted">人力缺口:</span> <span>${gap} 人</span><span class="muted">總需求:</span> <span>${demand} 人</span><span class="muted">總供給:</span> <span>${Math.round(demand + gap)} 人</span></div><div class="text-xs text-gray-400 mt-2">定義：rankBaseline = ${ONBOARD_MONTHS} × (reserveRate - 1) => 此職級基準岸休: ${idealShore.toFixed(1)} 個月 (儲備率 ${reserveRate})<br>公式：est = rankBaseline × (總供給 / 總需求)</div>`; tooltipEl.innerHTML = html; enterTimer = setTimeout(() => { tooltipEl.style.display = 'block'; const rect = e.target.getBoundingClientRect(); const tipRect = tooltipEl.getBoundingClientRect(); let left = rect.left + window.scrollX + (rect.width / 2) - (tipRect.width / 2); let top = rect.top + window.scrollY - tipRect.height - 10; if (top < window.scrollY + 10) top = rect.bottom + window.scrollY + 10; if (left < window.scrollX + 10) left = window.scrollX + 10; if (left + tipRect.width > window.scrollX + window.innerWidth - 10) left = window.scrollX + window.innerWidth - tipRect.width - 10; tooltipEl.style.left = `${left}px`; tooltipEl.style.top = `${top}px`; }, 100); }; cell._mouseLeaveHandler = () => { clearTimeout(enterTimer); tooltipEl.style.display = 'none'; }; cell.addEventListener('mouseenter', cell._mouseEnterHandler); cell.addEventListener('mouseleave', cell._mouseLeaveHandler); }); }
         function createControlPanel() { /* ... kept as is ... */ const config = currentConfig; const fleetEl = document.getElementById('fleet-forecast-inputs'); if(fleetEl) { fleetEl.innerHTML = ''; YEARS.forEach((year,i) => { fleetEl.innerHTML += `<div class="flex items-center justify-between"><label class="text-sm font-medium text-gray-700">${year}</label><input type="number" data-key="shipForecast.${i}" value="${config.shipForecast[i] || 0}" class="w-20 p-1 text-sm border border-gray-300 rounded-md text-right dynamic-input"></div>`; }); } const rowsEl = document.getElementById('recruitment-year-rows'); if(rowsEl) { rowsEl.innerHTML = ''; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const deckVal = (config.recruitment && Array.isArray(config.recruitment.deckHistory)) ? (config.recruitment.deckHistory[i] || 0) : 0; const engVal = (config.recruitment && Array.isArray(config.recruitment.engineHistory)) ? (config.recruitment.engineHistory[i] || 0) : 0; rowsEl.innerHTML += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" data-key="recruitment.deckHistory.${i}" value="${deckVal}" class="dynamic-input" /></td><td><input type="number" min="0" data-key="recruitment.engineHistory.${i}" value="${engVal}" class="dynamic-input" /></td></tr>`; } } const initialContainer = document.getElementById('initial-supply-inputs'); if(initialContainer) { initialContainer.innerHTML = '<div><div class="grid grid-cols-2 gap-2 items-center mb-1"><label class="text-sm font-bold text-gray-700">職級</label><label class="text-sm font-bold text-gray-700">總數</label></div></div>'; const rankOrder = ["MASTER","C_O","_2_O","_3_O","D_CADET","C_E","_2_E","_3_E","_4_E","E_CADET"]; rankOrder.forEach(rankId => { const name = config.ranks[rankId].name; const totalVal = config.initialSupply[rankId] !== undefined ? config.initialSupply[rankId] : 0; initialContainer.innerHTML += `<div class="grid grid-cols-2 gap-2 items-center"><div class="text-sm font-medium text-gray-700">${name}</div><input type="number" data-key="initialSupply.${rankId}" value="${totalVal}" class="p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`; }); } const deckButtonsEl = document.getElementById('deck-rank-buttons'); const engineButtonsEl = document.getElementById('engine-rank-buttons'); if(deckButtonsEl && engineButtonsEl) { deckButtonsEl.innerHTML = ''; engineButtonsEl.innerHTML = ''; RANK_IDS.DECK.forEach(rankId => deckButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); RANK_IDS.ENGINE.forEach(rankId => engineButtonsEl.innerHTML += `<button class="rank-selector-btn" data-rank-id="${rankId}" type="button">${config.ranks[rankId].name}</button>`); } }
         function renderRankDetailPanel(rankId) { /* ... kept as is ... */ const panel = document.getElementById('rank-detail-panel'); if (!panel || !currentConfig.ranks[rankId]) { if(panel) panel.innerHTML = '<p class="text-red-500">錯誤：找不到職級資料。</p>'; return; } const rankConfig = currentConfig.ranks[rankId]; const hasPromotion = (rankId !== 'MASTER' && rankId !== 'C_E'); const idealShoreMonths = (rankConfig.reserveRate) ? (ONBOARD_MONTHS * (rankConfig.reserveRate - 1)).toFixed(2) : (ONBOARD_MONTHS * (1.5 - 1)).toFixed(2); let html = `<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"><h4 class="text-lg font-bold text-blue-800">${rankConfig.name} - 年度參數設定</h4><div class="grid grid-cols-1 gap-4"><div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">儲備率</label><input type="number" step="0.01" data-key="ranks.${rankId}.reserveRate" value="${rankConfig.reserveRate.toFixed(2)}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input dynamic-input-reserve" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">岸休月份數 (連動)</label><input type="number" step="0.1" value="${idealShoreMonths}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-shore" data-rank-id="${rankId}"></div></div>${rankId === '_3_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">A系列船數 (連動)</label><input type="number" step="1" value="${rankConfig.aSeriesCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-aseries" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div></div><p class="text-xs text-gray-500 mt-1 -translate-y-3">"每船需求" = 1 + (A系列船數 / 該年總船數)</p>` : `${rankId === '_4_E' ? `<div class="grid grid-cols-2 gap-4"><div><label class="text-sm font-medium text-gray-700 block mb-1">脫硫塔船數 (連動)</label><input type="number" step="1" value="${rankConfig.scrubberCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-scrubber" data-rank-id="${rankId}"></div><div><label class="text-sm font-medium text-gray-700 block mb-1">船齡15年以上老船數 (連動)</label><input type="number" step="1" value="${rankConfig.oldShipCount || 0}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input-oldship" data-rank-id="${rankId}"></div></div><div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.001" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip.toFixed(3)}" disabled class="w-full p-1 text-sm border border-gray-300 rounded-md bg-gray-100"></div><p class="text-xs text-gray-500 mt-1">"每船需求" = 1 + (脫硫塔船數+船齡15年以上老船數) / 該年總船數)</p>` : `<div class="mt-3"><label class="text-sm font-medium text-gray-700 block mb-1">每船需求 (人)</label><input type="number" step="0.01" data-key="ranks.${rankId}.needsPerShip" value="${rankConfig.needsPerShip}" class="w-full p-1 text-sm border border-gray-300 rounded-md dynamic-input"></div>`}`}</div></div>`; html += `<div class="mt-4 table-container" style="max-height: 400px; overflow-y: auto;"><table class="year-param-table"><thead><tr><th>年份</th><th>流失率 (%)</th><th>晉升率 (%)</th></tr></thead><tbody>`; for (let i=0;i<YEARS.length;i++) { const year = YEARS[i]; const attritionVal = ((rankConfig.attritionRate && rankConfig.attritionRate[i] !== undefined) ? rankConfig.attritionRate[i] * 100 : 0).toFixed(0); const promotionVal = ((rankConfig.promotionRate && rankConfig.promotionRate[i] !== undefined) ? rankConfig.promotionRate[i] * 100 : 0).toFixed(0); html += `<tr><td class="font-medium">${year}</td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.attritionRate.${i}" value="${attritionVal}" class="dynamic-input dynamic-input-percent" /></td><td><input type="number" min="0" max="100" data-key="ranks.${rankId}.promotionRate.${i}" value="${promotionVal}" ${!hasPromotion ? 'disabled' : ''} class="dynamic-input dynamic-input-percent" /></td></tr>`; } html += `</tbody></table></div>`; panel.innerHTML = html; }
-        function updateAndRender({bypassDebounce=false}={}) { /* ... kept as is ... */ if (!bypassDebounce) { if (debounceTimer) clearTimeout(debounceTimer); debounceTimer = setTimeout(()=>updateAndRender({bypassDebounce:true}), 250); return; } if (currentConfig.ranks && currentConfig.ranks['_3_E']) { const rankConfig = currentConfig.ranks['_3_E']; const aSeriesCount = rankConfig.aSeriesCount || 0; const baseFleet = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_3_E'].needsPerShip = 1 + (aSeriesCount / baseFleet); const needsInput = document.querySelector(`[data-key="ranks._3_E.needsPerShip"]`); if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3); } if (currentConfig.ranks && currentConfig.ranks['_4_E']) { const rankConfig = currentConfig.ranks['_4_E']; const scrubberCount = rankConfig.scrubberCount || 0; const oldShipCount = rankConfig.oldShipCount || 0; const baseFleet = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_4_E'].needsPerShip = 1 + ((scrubberCount + oldShipCount) / baseFleet); const needsInput = document.querySelector(`[data-key="ranks._4_E.needsPerShip"]`); if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3); } const cfg = JSON.parse(JSON.stringify(currentConfig)); const results = runSimulation(cfg); lastResults = results; const activeTab = document.querySelector('.tab-content.active'); if (activeTab && activeTab.id === 'tab-supply-total') { renderDashboardTable(results, 'table-head-supply-total', 'table-body-supply-total', 'supply_total', [{ title: '甲板部', ids: ['MASTER','C_O','_2_O','_3_O'] }, { title: '機艙部', ids: ['C_E','_2_E','_3_E','_4_E'] }]); renderRecommendationTable(results, 'table-head-recommendation', 'table-body-recommendation'); renderDashboardTable(results, 'table-head-supply-deck-cadet', 'table-body-supply-deck-cadet', 'supply_total', [{ title: '', ids: ['D_CADET'] }]); renderDashboardTable(results, 'table-head-supply-engine-cadet', 'table-body-supply-engine-cadet', 'supply_total', [{ title: '', ids: ['E_CADET'] }]); renderCharts(results, ['chart-supply-total-deck', 'chart-supply-total-engine'], 'supply_total'); } else if (activeTab && activeTab.id === 'tab-total') { renderDashboardTable(results,'table-head-total','table-body-total','gap'); renderCharts(results,['chart-total-deck','chart-total-engine'],'gap'); } else if (activeTab && activeTab.id === 'tab-trends') { renderTrendTab(); } }
+        function updateAndRender({bypassDebounce=false}={}) {
+			if (!bypassDebounce) {
+				if (debounceTimer) clearTimeout(debounceTimer);
+				debounceTimer = setTimeout(()=>updateAndRender({bypassDebounce:true}), 250);
+				return;
+			}
+			
+			if (currentConfig.ranks && currentConfig.ranks['_3_E']) {
+				const rankConfig = currentConfig.ranks['_3_E'];
+				const aSeriesCount = rankConfig.aSeriesCount || 0;
+				const baseFleet = currentConfig.shipForecast[9] || 1;
+				const newNeedsPerShip = 1 + (aSeriesCount / baseFleet);
+				currentConfig.ranks['_3_E'].needsPerShip = newNeedsPerShip;
+				const needsInput = document.querySelector(`[data-key="ranks._3_E.needsPerShip"]`);
+				if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3);
+			}
+			
+			if (currentConfig.ranks && currentConfig.ranks['_4_E']) {
+				const rankConfig = currentConfig.ranks['_4_E'];
+				const scrubberCount = rankConfig.scrubberCount || 0;
+				const oldShipCount = rankConfig.oldShipCount || 0;
+				const baseFleet = currentConfig.shipForecast[9] || 1;
+				const newNeedsPerShip = 1 + ((scrubberCount + oldShipCount) / baseFleet);
+				currentConfig.ranks['_4_E'].needsPerShip = newNeedsPerShip;
+				const needsInput = document.querySelector(`[data-key="ranks._4_E.needsPerShip"]`);
+				if (needsInput) needsInput.value = newNeedsPerShip.toFixed(3);
+			}
+			
+			const cfg = JSON.parse(JSON.stringify(currentConfig));
+			const results = runSimulation(cfg);
+			lastResults = results;
+			const activeTab = document.querySelector('.tab-content.active');
+			
+			if (activeTab && activeTab.id === 'tab-supply-total') {
+				renderDashboardTable(results, 'table-head-supply-total', 'table-body-supply-total', 'supply_total', [{ title: '甲板部', ids: ['MASTER','C_O','_2_O','_3_O'] }, { title: '機艙部', ids: ['C_E','_2_E','_3_E','_4_E'] }]);
+				renderRecommendationTable(results, 'table-head-recommendation', 'table-body-recommendation');
+				renderDashboardTable(results, 'table-head-supply-deck-cadet', 'table-body-supply-deck-cadet', 'supply_total', [{ title: '', ids: ['D_CADET'] }]);
+				renderDashboardTable(results, 'table-head-supply-engine-cadet', 'table-body-supply-engine-cadet', 'supply_total', [{ title: '', ids: ['E_CADET'] }]);
+				renderCharts(results, ['chart-supply-total-deck', 'chart-supply-total-engine'], 'supply_total');
+			} else if (activeTab && activeTab.id === 'tab-total') {
+				renderDashboardTable(results,'table-head-total','table-body-total','gap');
+				renderCharts(results,['chart-total-deck','chart-total-engine'],'gap');
+			} else if (activeTab && activeTab.id === 'tab-trends') {
+				renderTrendTab();
+			}
+		}
         function addInputListeners(containerSelector) { /* ... kept as is ... */ const container = document.querySelector(containerSelector); if (!container) return; container.querySelectorAll('.dynamic-input').forEach(input => { if (input._handler) input.removeEventListener('input', input._handler); input._handler = (e) => { const key = e.target.dataset.key; if (!key) return; let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; setDeepValue(currentConfig, key, value); if (key.includes('reserveRate')) { const rankId = e.target.dataset.rankId; if (rankId) { const panel = e.target.closest('#rank-detail-panel'); const shoreInput = panel ? panel.querySelector(`.dynamic-input-shore[data-rank-id="${rankId}"]`) : null; if (shoreInput) { const idealShoreMonths = (ONBOARD_MONTHS * (value - 1)).toFixed(2); shoreInput.value = idealShoreMonths; } } } updateAndRender(); }; input.addEventListener('input', input._handler); }); container.querySelectorAll('.dynamic-input-shore').forEach(input => { if (input._shoreHandler) input.removeEventListener('input', input._shoreHandler); input._shoreHandler = (e) => { const rankId = e.target.dataset.rankId; let shoreMonths = parseFloat(e.target.value); if (isNaN(shoreMonths) || shoreMonths < 0) shoreMonths = 0; if (rankId) { const newReserveRate = (shoreMonths / ONBOARD_MONTHS) + 1; const reserveKey = `ranks.${rankId}.reserveRate`; setDeepValue(currentConfig, reserveKey, newReserveRate); const panel = e.target.closest('#rank-detail-panel'); const reserveInput = panel ? panel.querySelector(`.dynamic-input-reserve[data-rank-id="${rankId}"]`) : null; if (reserveInput) { reserveInput.value = newReserveRate.toFixed(2); } updateAndRender(); } }; input.addEventListener('input', input._shoreHandler); }); container.querySelectorAll('.dynamic-input-percent').forEach(input => { if (input._pHandler) input.removeEventListener('input', input._pHandler); input._pHandler = (e) => { const key = e.target.dataset.key; if (!key) return; let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; value = Math.max(0, Math.min(100, value)); setDeepValue(currentConfig, key, value / 100); updateAndRender(); }; input.addEventListener('input', input._pHandler); if (input._pBlur) input.removeEventListener('blur', input._pBlur); input._pBlur = (e) => { let value = parseFloat(e.target.value); if (isNaN(value)) value = 0; e.target.value = value.toFixed(0); }; input.addEventListener('blur', input._pBlur); }); ['aseries','scrubber','oldship'].forEach(type => { container.querySelectorAll(`.dynamic-input-${type}`).forEach(input => { if (input[`_${type}Handler`]) input.removeEventListener('input', input[`_${type}Handler`]); input[`_${type}Handler`] = (e) => { const rankId = e.target.dataset.rankId; let val = parseFloat(e.target.value); if (isNaN(val) || val < 0) val = 0; if (rankId === '_3_E' && type === 'aseries') setDeepValue(currentConfig, `ranks.${rankId}.aSeriesCount`, val); if (rankId === '_4_E' && type === 'scrubber') setDeepValue(currentConfig, `ranks.${rankId}.scrubberCount`, val); if (rankId === '_4_E' && type === 'oldship') setDeepValue(currentConfig, `ranks.${rankId}.oldShipCount`, val); updateAndRender(); }; input.addEventListener('input', input[`_${type}Handler`]); }); }); }
         function calculateOptimalFleet(config) { /* ... kept as is ... */ const GAP_CONSTRAINT = 10; const HIGH_RANKS = ['MASTER', 'C_O', 'C_E', '_2_E']; let optimalFleet = []; let prevSupply = Object.assign({}, config.initialSupply); for (let i = 0; i < YEARS.length; i++) { const originalTargetShips = config.shipForecast[i]; let low = 0; let high = originalTargetShips + 50; let bestFeasibleShips = 0; while (low <= high) { let midShips = Math.floor((low + high) / 2); if (midShips === 0) { bestFeasibleShips = 0; low = 1; continue; } const yearResult = simulateOneYear(config, prevSupply, midShips, i); let isFeasible = true; for (const rankId of HIGH_RANKS) { if (yearResult.gaps.total[rankId] < GAP_CONSTRAINT) { isFeasible = false; break; } } if (isFeasible) { bestFeasibleShips = midShips; low = midShips + 1; } else { high = midShips - 1; } } optimalFleet.push(bestFeasibleShips); const finalYearResult = simulateOneYear(config, prevSupply, bestFeasibleShips, i); prevSupply = finalYearResult.nextSupply; } return optimalFleet; }
         function loadScenario(name) { /* ... kept as is ... */ const scenario = DEFAULT_PARAMS[name]; currentConfig = scenario ? JSON.parse(JSON.stringify(scenario)) : JSON.parse(JSON.stringify(DEFAULT_PARAMS.baseline_one_year_attrition)); if (currentConfig.ranks && currentConfig.ranks['_3_E']) { const aSeries = currentConfig.ranks['_3_E'].aSeriesCount || 0; const base = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_3_E'].needsPerShip = 1 + (aSeries / base); } if (currentConfig.ranks && currentConfig.ranks['_4_E']) { const scrub = currentConfig.ranks['_4_E'].scrubberCount || 0; const old = currentConfig.ranks['_4_E'].oldShipCount || 0; const base = currentConfig.shipForecast[9] || 1; currentConfig.ranks['_4_E'].needsPerShip = 1 + ((scrub + old) / base); } currentSelectedRank = 'MASTER'; createControlPanel(); renderRankDetailPanel(currentSelectedRank); addInputListeners('#controls-container'); addInputListeners('#rank-detail-panel'); const baselineBtn = document.getElementById('load-baseline'); const bl3Btn = document.getElementById('load-baseline-3y'); const bl5Btn = document.getElementById('load-baseline-5y'); const targetBtn = document.getElementById('load-target-scenario'); [baselineBtn, bl3Btn, bl5Btn, targetBtn].forEach(b => { if(b) b.className = 'scenario-btn'; }); if (name === 'target_scenario' && targetBtn) targetBtn.classList.add('active','target'); else { if (name === 'baseline_one_year_attrition' && baselineBtn) baselineBtn.classList.add('active','baseline'); if (name === 'baseline_three_year_attrition' && bl3Btn) bl3Btn.classList.add('active','baseline'); if (name === 'baseline_five_year_attrition' && bl5Btn) bl5Btn.classList.add('active','baseline'); } wireRankButtons(); styleRankButtons(); updateAndRender({bypassDebounce:true}); }
@@ -748,6 +1095,7 @@
         function styleRankButtons() { document.querySelectorAll('.rank-selector-btn').forEach(btn => { if (btn.dataset.rankId === currentSelectedRank) btn.classList.add('active'); else btn.classList.remove('active'); }); }
 
         document.addEventListener('DOMContentLoaded', () => {
+			tryRestoreSavedData();
             document.getElementById('load-baseline').addEventListener('click', () => loadScenario('baseline_one_year_attrition'));
             document.getElementById('load-baseline-3y').addEventListener('click', () => loadScenario('baseline_three_year_attrition'));
             document.getElementById('load-baseline-5y').addEventListener('click', () => loadScenario('baseline_five_year_attrition'));
